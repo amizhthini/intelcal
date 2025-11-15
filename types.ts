@@ -1,3 +1,9 @@
+
+export interface Category {
+  name: string;
+  color: string; // hex color
+}
+
 export interface ExtractedData {
   title: string | null;
   summary: string | null;

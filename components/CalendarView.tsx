@@ -1,5 +1,6 @@
+
 import React, { useState, useMemo, useCallback } from 'react';
-import { CalendarEvent } from '../types';
+import { CalendarEvent, Category } from '../types';
 import EventModal from './EventModal';
 import { PlusIcon, ChevronLeftIcon, ChevronRightIcon } from './Icons';
 import { getCategoryHexColor } from '../utils/color';
@@ -11,6 +12,8 @@ interface CalendarViewProps {
   isGoogleCalendarConnected: boolean;
   onAddToGoogleCalendar: (event: CalendarEvent) => Promise<void>;
   onSaveEvent: (event: CalendarEvent) => void;
+  allCategories: Category[];
+  setAllCategories: React.Dispatch<React.SetStateAction<Category[]>>;
 }
 
 type CalendarDisplayMode = 'month' | 'week' | 'day';
@@ -22,7 +25,8 @@ const toLocalDateKey = (date: Date): string => {
     return `${year}-${month}-${day}`;
 };
 
-const CalendarView: React.FC<CalendarViewProps> = ({ events, setEvents, showToast, isGoogleCalendarConnected, onAddToGoogleCalendar, onSaveEvent }) => {
+const CalendarView: React.FC<CalendarViewProps> = (props) => {
+  const { events, setEvents, showToast, isGoogleCalendarConnected, onAddToGoogleCalendar, onSaveEvent, allCategories, setAllCategories } = props;
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
@@ -153,7 +157,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ events, setEvents, showToas
                         key={event.id} 
                         onClick={(e) => { e.stopPropagation(); openModalForEdit(event); }} 
                         className="bg-slate-100 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 text-[10px] sm:text-xs font-medium p-1 rounded truncate cursor-pointer hover:opacity-80 border-l-4"
-                        style={{ borderLeftColor: getCategoryHexColor(event.category) }}
+                        style={{ borderLeftColor: getCategoryHexColor(event.category, allCategories) }}
                     >
                         {event.title}
                     </div>
@@ -166,12 +170,11 @@ const CalendarView: React.FC<CalendarViewProps> = ({ events, setEvents, showToas
         </div>
         </>
     );
-  }, [currentDate, events]);
+  }, [currentDate, events, allCategories]);
 
   const renderTimeGridView = useCallback((days: Date[]) => {
     const hours = Array.from({ length: 24 }, (_, i) => i);
     
-    // Group events by day
     const eventsByDay: { [key: string]: CalendarEvent[] } = {};
     days.forEach(day => {
         const dateKey = toLocalDateKey(day);
@@ -182,7 +185,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({ events, setEvents, showToas
 
     return (
         <div className="flex flex-col">
-            {/* Header */}
             <div className="flex sticky top-0 bg-white dark:bg-slate-800 z-10 border-b border-slate-200 dark:border-slate-700">
                 <div className="w-14 shrink-0"></div>
                 {days.map(day => (
@@ -192,9 +194,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ events, setEvents, showToas
                     </div>
                 ))}
             </div>
-            {/* Body */}
             <div className="flex overflow-y-auto" style={{ maxHeight: '60vh' }}>
-                {/* Time column */}
                 <div className="w-14 shrink-0 text-right">
                     {hours.map(hour => (
                         <div key={hour} className="h-12 flex justify-end pr-2 border-r border-slate-200 dark:border-slate-700">
@@ -202,7 +202,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({ events, setEvents, showToas
                         </div>
                     ))}
                 </div>
-                 {/* Event columns */}
                 {days.map(day => {
                     const dateKey = toLocalDateKey(day);
                     const dayEvents = eventsByDay[dateKey] || [];
@@ -222,7 +221,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ events, setEvents, showToas
                                         key={event.id}
                                         onClick={() => openModalForEdit(event)}
                                         className="absolute left-1 right-1 bg-slate-100 dark:bg-slate-900/70 p-1 rounded text-slate-800 dark:text-slate-200 text-xs overflow-hidden cursor-pointer border-l-4"
-                                        style={{ top: `${top}%`, height: `${height}%`, borderLeftColor: getCategoryHexColor(event.category) }}
+                                        style={{ top: `${top}%`, height: `${height}%`, borderLeftColor: getCategoryHexColor(event.category, allCategories) }}
                                     >
                                         <p className="font-semibold truncate">{event.title}</p>
                                         <p className="opacity-70">{start.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})} - {end.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</p>
@@ -235,7 +234,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ events, setEvents, showToas
             </div>
         </div>
     );
-  }, [events, openModalForEdit]);
+  }, [events, openModalForEdit, allCategories]);
 
   const renderWeekView = () => {
     const startOfWeek = new Date(currentDate);
@@ -290,6 +289,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({ events, setEvents, showToas
           showToast={showToast}
           isGoogleCalendarConnected={isGoogleCalendarConnected}
           onAddToGoogleCalendar={onAddToGoogleCalendar}
+          allCategories={allCategories}
+          setAllCategories={setAllCategories}
         />
       )}
     </div>

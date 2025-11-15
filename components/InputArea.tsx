@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useCallback } from 'react';
 import { UploadIcon, LinkIcon, SparklesIcon, XCircleIcon } from './Icons';
 import LoadingSpinner from './LoadingSpinner';
@@ -23,18 +24,16 @@ const ACCEPTED_FILE_TYPES = [
 const InputArea: React.FC<InputAreaProps> = ({ onExtract, isLoading }) => {
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
   const [text, setText] = useState<string>('');
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = event.target.files;
-    if (selectedFiles) {
-        const newFiles = Array.from(selectedFiles).filter(file => {
+  const handleFiles = (files: FileList | null) => {
+    if (files) {
+        const newFiles = Array.from(files).filter(file => {
             if (stagedFiles.some(stagedFile => stagedFile.name === file.name && stagedFile.size === file.size)) {
                 return false; // Prevent duplicates
             }
-            // A more lenient check for docx as mime types can be tricky
-            const isDocx = file.name.endsWith('.docx') && file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-            if (!ACCEPTED_FILE_TYPES.includes(file.type) && !isDocx) {
+            if (!ACCEPTED_FILE_TYPES.some(type => file.type === type) && !file.name.endsWith('.docx')) {
                  alert(`Skipping unsupported file type: ${file.name}. Please upload images, PDFs, Word docs, or spreadsheets.`);
                  return false;
             }
@@ -42,7 +41,27 @@ const InputArea: React.FC<InputAreaProps> = ({ onExtract, isLoading }) => {
         });
         setStagedFiles(prev => [...prev, ...newFiles]);
     }
-    event.target.value = '';
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    handleFiles(event.target.files);
+    event.target.value = ''; // Allow selecting the same file again
+  };
+  
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDraggingOver(true);
+  };
+  
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDraggingOver(false);
+  };
+  
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDraggingOver(false);
+    handleFiles(event.dataTransfer.files);
   };
 
   const handleFileClick = () => {
@@ -66,7 +85,10 @@ const InputArea: React.FC<InputAreaProps> = ({ onExtract, isLoading }) => {
         <div className="space-y-6">
           <div
             onClick={handleFileClick}
-            className="group relative border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg p-6 text-center cursor-pointer hover:border-indigo-500 dark:hover:border-indigo-400 transition-colors"
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={`group relative border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-indigo-500 dark:hover:border-indigo-400 transition-colors ${isDraggingOver ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' : 'border-slate-300 dark:border-slate-600'}`}
           >
             <input
               type="file"
@@ -99,7 +121,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onExtract, isLoading }) => {
             ) : (
               <div className="flex flex-col items-center text-slate-500 dark:text-slate-400">
                 <UploadIcon className="w-12 h-12 mb-2" />
-                <p className="font-semibold text-slate-700 dark:text-slate-300">Click to upload files</p>
+                <p className="font-semibold text-slate-700 dark:text-slate-300">Drag & drop or click to upload</p>
                 <p className="text-sm">Supports images, PDFs, DOCX, and spreadsheets.</p>
               </div>
             )}

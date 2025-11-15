@@ -1,10 +1,22 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { ExtractedData } from '../types';
 
 declare var XLSX: any; // From the script tag in index.html
 declare var mammoth: any; // From the script tag in index.html
 
-type ExtractedDataResult = Omit<ExtractedData, 'source'>;
+type ExtractedDataResult = Omit<ExtractedData, 'source'> & { originalSource?: string };
+
+
+const getDeadlineFallback = (): string => {
+    const now = new Date();
+    now.setHours(23, 59, 59, 999);
+    // Format to YYYY-MM-DDTHH:MM:SS
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}T23:59:59`;
+};
 
 const fileToGenerativePart = async (file: File) => {
   const base64EncodedDataPromise = new Promise<string>((resolve) => {
@@ -54,7 +66,7 @@ const extractFromSheet = async (file: File): Promise<ExtractedDataResult[]> => {
         
         IMPORTANT RULES:
         1. The output MUST be a valid JSON array. Each element in the array is an object representing one row of the spreadsheet.
-        2. If a 'deadline' column is missing or a row has no value for it, you MUST create a valid deadline. Default to today's date at 12:00 PM if no other information can be inferred. Today is ${new Date().toISOString()}.
+        2. If a 'deadline' column is missing or a row has no value for it, you MUST create a valid deadline. Default to today's date at 23:59:59 if no other information can be inferred. Today is ${new Date().toISOString()}.
         3. Format all deadlines as YYYY-MM-DDTHH:MM:SS.
         4. If the spreadsheet is empty or contains no useful data, return an empty array [].
     `;
@@ -85,7 +97,11 @@ const extractFromSheet = async (file: File): Promise<ExtractedDataResult[]> => {
         const jsonString = response.text.trim();
         const parsedData = JSON.parse(jsonString);
         if (Array.isArray(parsedData)) {
-            return parsedData.map(item => ({ ...item, originalSource: file.name }));
+            return parsedData.map(item => ({ 
+                ...item,
+                deadline: item.deadline || getDeadlineFallback(),
+                originalSource: file.name
+            }));
         }
         return [];
     } catch (e) {
@@ -96,14 +112,13 @@ const extractFromSheet = async (file: File): Promise<ExtractedDataResult[]> => {
 
 
 export const extractInfo = async (file: File | null, text: string): Promise<ExtractedDataResult[]> => {
+  const originalSourceName = file?.name || `Pasted Text: "${text.substring(0, 20)}..."`;
   if (file) {
-    if (file.type.includes('spreadsheet') || file.type.includes('csv')) {
+    if (file.type.includes('spreadsheet') || file.type.includes('csv') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv')) {
         return extractFromSheet(file);
     }
     if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
         const docxText = await extractFromDocx(file);
-        // We now have the text, so we can process it like normal text input.
-        // We nullify the 'file' variable to avoid sending it to the API again.
         text = `CONTEXT FROM DOCX FILE (${file.name}):\n\n${docxText}`;
         file = null; 
     }
@@ -125,12 +140,12 @@ export const extractInfo = async (file: File | null, text: string): Promise<Extr
     - Summary: A brief one or two-sentence summary of the description.
     - Eligibility Criteria: Any requirements or criteria for participation.
     - Location: The physical or virtual location.
-    - Deadline: The absolute final date and time for submission or attendance. Extract it in YYYY-MM-DDTHH:MM:SS format. Today is ${new Date().toLocaleDateString('en-CA')}. If a timezone is mentioned, convert it to UTC. If no time is mentioned, use noon (12:00:00). If only a date is available, return it as YYYY-MM-DD.
+    - Deadline: The absolute final date and time for submission or attendance. Extract it in YYYY-MM-DDTHH:MM:SS format. Today is ${new Date().toLocaleDateString('en-CA')}. If no time is mentioned, use 23:59:59. If only a date is available, return it as YYYY-MM-DD. If no date is available at all, return null.
     - Category: Classify the item into a relevant category such as "Business", "Personal", "Competition", "Grant", "Meeting", or "Deadline". Choose the most fitting one.
   `;
   
   const parts: any[] = [{ text: prompt }];
-  if (file) { // This will now handle images and PDFs
+  if (file) { 
       parts.push(await fileToGenerativePart(file));
   }
   if (text) {
@@ -160,9 +175,11 @@ export const extractInfo = async (file: File | null, text: string): Promise<Extr
     const jsonString = response.text.trim();
     const parsedData = JSON.parse(jsonString) as ExtractedDataResult;
     
-    const originalSourceName = file?.name || `Pasted Text: "${text.substring(0,20)}..."`;
-    const resultWithSource = { ...parsedData, originalSource: originalSourceName };
-    return [resultWithSource];
+    if (!parsedData.deadline) {
+        parsedData.deadline = getDeadlineFallback();
+    }
+    
+    return [{ ...parsedData, originalSource: originalSourceName }];
   } catch (e) {
       console.error("Failed to parse Gemini response:", response.text);
       throw new Error("Could not parse the response from the AI model.");

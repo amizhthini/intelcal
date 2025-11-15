@@ -1,11 +1,12 @@
 
-import React, { useState, useCallback } from 'react';
-import { ExtractedData, CalendarEvent, View, ToastMessage, BookingSettings } from './types';
+import React, { useState, useCallback, useEffect } from 'react';
+import { ExtractedData, CalendarEvent, View, ToastMessage, BookingSettings, Category } from './types';
 import { extractInfo } from './services/geminiService';
 import useLocalStorage from './hooks/useLocalStorage';
 import useNotifications from './hooks/useNotifications';
 import { generateICS, generateInviteEmail } from './utils/calendar';
 import { addEventToGoogleCalendar } from './services/googleCalendarService';
+import { DEFAULT_CATEGORIES, COLOR_PALETTE } from './utils/categories';
 
 import LoginScreen from './components/LoginScreen';
 import Header from './components/Header';
@@ -30,6 +31,8 @@ const App: React.FC = () => {
   const [googleClientId, setGoogleClientId] = useLocalStorage<string>('googleClientId', '');
   const [isClientIdModalOpen, setIsClientIdModalOpen] = useState(false);
   
+  const [allCategories, setAllCategories] = useLocalStorage<Category[]>('allCategories', DEFAULT_CATEGORIES);
+  
   const [bookingSettings, setBookingSettings] = useLocalStorage<BookingSettings>('bookingSettings', {
     availabilityRules: [],
     appointmentDuration: 30,
@@ -44,6 +47,28 @@ const App: React.FC = () => {
       setToast(null);
     }, 3000);
   }, []);
+
+  // One-time migration for old string-based categories
+  useEffect(() => {
+    const firstItem = allCategories[0];
+    if (firstItem && typeof firstItem === 'string') {
+        console.log('Migrating categories to new format...');
+        const migratedCategories = (allCategories as unknown as string[]).map((name, index) => ({
+            name,
+            color: COLOR_PALETTE[index % COLOR_PALETTE.length],
+        }));
+        
+        DEFAULT_CATEGORIES.forEach(defaultCat => {
+            if (!migratedCategories.some(mc => mc.name.toLowerCase() === defaultCat.name.toLowerCase())) {
+                migratedCategories.push(defaultCat);
+            }
+        });
+        
+        setAllCategories(migratedCategories);
+        showToast('Categories updated!', 'success');
+    }
+  }, [allCategories, setAllCategories, showToast]);
+
 
   const handleExtract = useCallback(async (files: File[], text: string) => {
     const tasks: { file: File | null; text: string; sourceName: string }[] = [];
@@ -67,10 +92,7 @@ const App: React.FC = () => {
         const extractedInfos = extractedInfosNested.flat();
         
         const finalResults = extractedInfos.map((info, index) => {
-            // Find the original task by the unique source name tagged by geminiService
-            const task = tasks.find(t => 
-                (info as any).originalSource === t.sourceName
-            ) || tasks[0]; // Fallback, though should always find
+            const task = tasks.find(t => (info as any).originalSource === t.sourceName) || tasks[0];
             return {
                 ...info,
                 clientId: `${Date.now()}-${index}`,
@@ -133,8 +155,8 @@ const App: React.FC = () => {
         return null;
       }
       let deadlineISO = data.deadline;
-      if (deadlineISO && deadlineISO.length <= 10) { // YYYY-MM-DD or less
-          deadlineISO += 'T12:00:00'; // Use noon to avoid timezone boundary issues
+      if (deadlineISO && (deadlineISO.length <= 10 || !deadlineISO.includes('T'))) {
+          deadlineISO = `${deadlineISO.split('T')[0]}T23:59:59`; 
       }
       const deadline = new Date(deadlineISO);
       if (isNaN(deadline.getTime())) {
@@ -156,35 +178,62 @@ const App: React.FC = () => {
 
   const handleBulkAddToCalendar = useCallback((dataItems: ExtractedData[]) => {
     let addedCount = 0;
-    const newEvents = dataItems.reduce((acc: CalendarEvent[], data) => {
-        const newEvent = extractedDataToCalendarEvent(data);
-        if (newEvent) {
-            acc.push({ ...newEvent, id: `${Date.now()}-${addedCount++}` });
+    let skippedCount = 0;
+    const newEvents: CalendarEvent[] = [];
+
+    dataItems.forEach(data => {
+        const potentialEvent = extractedDataToCalendarEvent(data);
+        if (potentialEvent) {
+            const isDuplicate = events.some(
+                e => e.title === potentialEvent.title && e.start === potentialEvent.start
+            );
+            if (isDuplicate) {
+                skippedCount++;
+            } else {
+                newEvents.push({ ...potentialEvent, id: `${Date.now()}-${addedCount}` });
+                addedCount++;
+            }
         }
-        return acc;
-    }, []);
+    });
     
-    if (newEvents.length > 0) {
+    if (addedCount > 0) {
         setEvents(prev => [...prev, ...newEvents]);
-        showToast(`${newEvents.length} event(s) added to calendar!`, 'success');
-        setExtractionResults([]); // Auto-clear results
-        setCurrentView(View.CALENDAR);
+    }
+    
+    if (addedCount > 0 && skippedCount > 0) {
+        showToast(`${addedCount} event(s) added. ${skippedCount} duplicate(s) skipped.`, 'success');
+    } else if (addedCount > 0) {
+        showToast(`${addedCount} event(s) added to calendar!`, 'success');
+    } else if (skippedCount > 0) {
+        showToast(`No events added. ${skippedCount} duplicate(s) found.`, 'error');
     } else {
         showToast("No valid events could be added.", 'error');
     }
-  }, [setEvents, showToast]);
+
+    if (addedCount > 0) {
+        setExtractionResults([]);
+        setCurrentView(View.CALENDAR);
+    }
+  }, [events, setEvents, showToast]);
 
 
   const addEventToCalendar = useCallback((data: ExtractedData) => {
     const newEvent = extractedDataToCalendarEvent(data);
     if(newEvent) {
+        const isDuplicate = events.some(
+            e => e.title === newEvent.title && e.start === newEvent.start
+        );
+        if (isDuplicate) {
+            showToast("This event already exists in your calendar.", 'error');
+            return;
+        }
         handleSaveEvent(newEvent);
         setExtractionResults([]); // Auto-clear results
         setCurrentView(View.CALENDAR);
     } else {
         showToast("Cannot add to calendar. Title and deadline are required.", 'error');
     }
-  }, [showToast, handleSaveEvent]);
+  }, [events, showToast, handleSaveEvent]);
 
   const handleBulkExportToICS = useCallback((dataItems: ExtractedData[]) => {
     let exportedCount = 0;
@@ -217,7 +266,7 @@ const App: React.FC = () => {
         const deadlineISO = (eventData as ExtractedData).deadline || (eventData as CalendarEvent).start;
         if (!deadlineISO) throw new Error("Event has no date.");
         
-        const deadline = new Date(deadlineISO.length === 10 ? `${deadlineISO}T12:00:00` : deadlineISO);
+        const deadline = new Date(deadlineISO.length === 10 ? `${deadlineISO}T23:59:59` : deadlineISO);
         
         const event: CalendarEvent = {
             id: (eventData as CalendarEvent).id || Date.now().toString(),
@@ -251,8 +300,17 @@ const App: React.FC = () => {
 
   const handleBulkAddToGoogleCalendar = async (dataItems: ExtractedData[]) => {
       let addedCount = 0;
-      showToast(`Adding ${dataItems.length} events to Google Calendar...`, 'success');
+      let skippedCount = 0;
+      showToast(`Processing ${dataItems.length} events for Google Calendar...`, 'success');
       for (const data of dataItems) {
+          const potentialEvent = extractedDataToCalendarEvent(data);
+          if (potentialEvent) {
+              const isDuplicate = events.some(e => e.title === potentialEvent.title && e.start === potentialEvent.start);
+              if (isDuplicate) {
+                  skippedCount++;
+                  continue;
+              }
+          }
           try {
               await handleAddToGoogleCalendar(data);
               addedCount++;
@@ -260,7 +318,14 @@ const App: React.FC = () => {
               console.error(`Failed to add item to Google Calendar: ${data.title}`, e);
           }
       }
-      showToast(`${addedCount} of ${dataItems.length} events added to Google Calendar.`, addedCount > 0 ? 'success' : 'error');
+      
+      let message = '';
+      if(addedCount > 0) message += `${addedCount} event(s) added. `;
+      if(skippedCount > 0) message += `${skippedCount} duplicate(s) skipped.`;
+      if(message === '') message = 'No new events to add.';
+
+      showToast(message, addedCount > 0 ? 'success' : 'error');
+
       if (addedCount > 0) {
         setExtractionResults([]); // Auto-clear results
       }
@@ -311,6 +376,8 @@ const App: React.FC = () => {
             isGoogleCalendarConnected={isGoogleCalendarConnected}
             onAddToGoogleCalendar={handleAddToGoogleCalendar}
             onBulkAddToGoogleCalendar={handleBulkAddToGoogleCalendar}
+            allCategories={allCategories}
+            setAllCategories={setAllCategories}
           />
         )}
         {currentView === View.CALENDAR && 
@@ -321,6 +388,8 @@ const App: React.FC = () => {
                 isGoogleCalendarConnected={isGoogleCalendarConnected}
                 onAddToGoogleCalendar={handleAddToGoogleCalendar}
                 onSaveEvent={handleSaveEvent}
+                allCategories={allCategories}
+                setAllCategories={setAllCategories}
             />
         }
         {currentView === View.BOOKING &&

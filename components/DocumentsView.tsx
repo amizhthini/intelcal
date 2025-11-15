@@ -1,5 +1,6 @@
+
 import React from 'react';
-import { ExtractedData } from '../types';
+import { ExtractedData, Category } from '../types';
 import InputArea from './InputArea';
 import ResultsDisplay from './ResultsDisplay';
 
@@ -13,6 +14,8 @@ interface DocumentsViewProps {
   isGoogleCalendarConnected: boolean;
   onAddToGoogleCalendar: (data: ExtractedData) => void;
   onBulkAddToGoogleCalendar: (data: ExtractedData[]) => void;
+  allCategories: Category[];
+  setAllCategories: React.Dispatch<React.SetStateAction<Category[]>>;
 }
 
 const DocumentsView: React.FC<DocumentsViewProps> = (props) => {
@@ -28,6 +31,8 @@ const DocumentsView: React.FC<DocumentsViewProps> = (props) => {
         isGoogleCalendarConnected={props.isGoogleCalendarConnected}
         onAddToGoogleCalendar={props.onAddToGoogleCalendar}
         onBulkAddToGoogleCalendar={props.onBulkAddToGoogleCalendar}
+        allCategories={props.allCategories}
+        setAllCategories={props.setAllCategories}
       />
     </>
   );

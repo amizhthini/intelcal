@@ -1,8 +1,11 @@
+
 import React, { useState, useEffect } from 'react';
-import { ExtractedData } from '../types';
+import { ExtractedData, Category } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import { CalendarIcon, DownloadIcon, InformationCircleIcon, GoogleIcon } from './Icons';
 import { getCategoryColorClasses } from '../utils/color';
+import CategorySelector from './CategorySelector';
+import { COLOR_PALETTE } from '../utils/categories';
 
 interface ResultsDisplayProps {
   results: ExtractedData[];
@@ -13,10 +16,12 @@ interface ResultsDisplayProps {
   isGoogleCalendarConnected: boolean;
   onAddToGoogleCalendar: (data: ExtractedData) => void;
   onBulkAddToGoogleCalendar: (data: ExtractedData[]) => void;
+  allCategories: Category[];
+  setAllCategories: React.Dispatch<React.SetStateAction<Category[]>>;
 }
 
 const ResultsDisplay: React.FC<ResultsDisplayProps> = (props) => {
-  const { results, isLoading, onAddToCalendar, onBulkAddToCalendar, onBulkExportToICS, isGoogleCalendarConnected, onAddToGoogleCalendar, onBulkAddToGoogleCalendar } = props;
+  const { results, isLoading, onAddToCalendar, onBulkAddToCalendar, onBulkExportToICS, isGoogleCalendarConnected, onAddToGoogleCalendar, onBulkAddToGoogleCalendar, allCategories, setAllCategories } = props;
   const [editableResults, setEditableResults] = useState<ExtractedData[]>([]);
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
 
@@ -29,6 +34,21 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = (props) => {
       setEditableResults(currentResults => 
           currentResults.map(r => r.clientId === clientId ? { ...r, [field]: value } : r)
       );
+  }
+
+  const handleCategoryChange = (clientId: string, newCategoryName: string, isNew: boolean = false) => {
+    handleFieldChange(clientId, 'category', newCategoryName);
+    if (isNew) {
+        const newCategory: Category = {
+            name: newCategoryName,
+            color: COLOR_PALETTE[Math.floor(Math.random() * COLOR_PALETTE.length)],
+        };
+        setAllCategories(prev => [...prev, newCategory]);
+    }
+  };
+
+  const handleColorChange = (categoryName: string, newColor: string) => {
+    setAllCategories(prev => prev.map(c => c.name === categoryName ? { ...c, color: newColor } : c));
   }
 
   const handleSelect = (clientId: string, isSelected: boolean) => {
@@ -93,7 +113,7 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = (props) => {
                         <input type="checkbox" checked={isAllSelected} onChange={(e) => handleSelectAll(e.target.checked)} className="w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500"/>
                     </th>
                     <th scope="col" className="px-6 py-3 min-w-[150px]">Source</th>
-                    <th scope="col" className="px-6 py-3 min-w-[150px]">Category</th>
+                    <th scope="col" className="px-6 py-3 min-w-[200px]">Category</th>
                     <th scope="col" className="px-6 py-3 min-w-[200px]">Title</th>
                     <th scope="col" className="px-6 py-3 min-w-[200px]">Deadline</th>
                     <th scope="col" className="px-6 py-3 min-w-[250px]">Summary</th>
@@ -102,29 +122,29 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = (props) => {
                 </tr>
             </thead>
             <tbody>
-                {editableResults.map((result) => {
-                    const colorClasses = getCategoryColorClasses(result.category);
-                    return (
-                        <tr key={result.clientId} className="bg-white border-b dark:bg-slate-800 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600/20">
-                            <td className="w-4 p-4">
-                                <input type="checkbox" checked={selectedClientIds.has(result.clientId!)} onChange={e => handleSelect(result.clientId!, e.target.checked)} className="w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500"/>
-                            </td>
-                            <td className="px-6 py-4 font-medium text-slate-900 dark:text-white whitespace-nowrap">{result.source}</td>
-                            <td className="px-6 py-4">
-                                <div className={`px-2 py-1 rounded-full text-xs font-semibold inline-block ${colorClasses.background} ${colorClasses.text}`}>
-                                    <input type="text" value={result.category || ''} onChange={e => handleFieldChange(result.clientId!, 'category', e.target.value)} className="w-full bg-transparent focus:outline-none"/>
-                                </div>
-                            </td>
-                            <td className="px-6 py-4"><input type="text" value={result.title || ''} onChange={e => handleFieldChange(result.clientId!, 'title', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500"/></td>
-                            <td className="px-6 py-4"><input type="datetime-local" value={(result.deadline || '').substring(0,16)} onChange={e => handleFieldChange(result.clientId!, 'deadline', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500 dark:[color-scheme:dark]"/></td>
-                            <td className="px-6 py-4"><textarea rows={1} value={result.summary || ''} onChange={e => handleFieldChange(result.clientId!, 'summary', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500 resize-none"/></td>
-                            <td className="px-6 py-4"><input type="text" value={result.location || ''} onChange={e => handleFieldChange(result.clientId!, 'location', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500"/></td>
-                            <td className="px-6 py-4">
-                                <button onClick={() => onAddToCalendar(result)} className="font-medium text-indigo-600 dark:text-indigo-500 hover:underline">Add</button>
-                            </td>
-                        </tr>
-                    )
-                })}
+                {editableResults.map((result) => (
+                    <tr key={result.clientId} className="bg-white border-b dark:bg-slate-800 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600/20">
+                        <td className="w-4 p-4">
+                            <input type="checkbox" checked={selectedClientIds.has(result.clientId!)} onChange={e => handleSelect(result.clientId!, e.target.checked)} className="w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500"/>
+                        </td>
+                        <td className="px-6 py-4 font-medium text-slate-900 dark:text-white whitespace-nowrap">{result.source}</td>
+                        <td className="px-6 py-4">
+                            <CategorySelector
+                                value={result.category || 'General'}
+                                onChange={(catName, isNew) => handleCategoryChange(result.clientId!, catName, isNew)}
+                                onColorChange={handleColorChange}
+                                allCategories={allCategories}
+                            />
+                        </td>
+                        <td className="px-6 py-4"><input type="text" value={result.title || ''} onChange={e => handleFieldChange(result.clientId!, 'title', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500"/></td>
+                        <td className="px-6 py-4"><input type="datetime-local" value={(result.deadline || '').substring(0,16)} onChange={e => handleFieldChange(result.clientId!, 'deadline', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500 dark:[color-scheme:dark]"/></td>
+                        <td className="px-6 py-4"><textarea rows={1} value={result.summary || ''} onChange={e => handleFieldChange(result.clientId!, 'summary', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500 resize-none"/></td>
+                        <td className="px-6 py-4"><input type="text" value={result.location || ''} onChange={e => handleFieldChange(result.clientId!, 'location', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500"/></td>
+                        <td className="px-6 py-4">
+                            <button onClick={() => onAddToCalendar(result)} className="font-medium text-indigo-600 dark:text-indigo-500 hover:underline">Add</button>
+                        </td>
+                    </tr>
+                ))}
             </tbody>
         </table>
       </div>
