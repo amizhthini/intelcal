@@ -13,11 +13,7 @@ export const generateICS = (event: CalendarEvent) => {
   if(event.summary) description += `Summary: ${event.summary}\\n\\n`;
   if(event.eligibility) description += `Eligibility: ${event.eligibility}\\n\\n`;
   if(event.source) {
-    if (event.source.startsWith('data:image')) {
-      description += 'Source: Uploaded Image\\n\\n';
-    } else {
-      description += `Source Text: ${event.source.substring(0, 100)}${event.source.length > 100 ? '...' : ''}\\n\\n`;
-    }
+    description += `Source: ${event.source}\\n\\n`;
   }
   description = description.replace(/\n/g, '\\n');
 

@@ -16,22 +16,13 @@ import NavigationBar from './components/NavigationBar';
 import Toast from './components/Toast';
 import GoogleClientIdModal from './components/GoogleClientIdModal';
 
-const fileToDataUrl = (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(file);
-    });
-};
-
-
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
   
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
-  const [extractedData, setExtractedData] = useState<ExtractedData | null>(null);
+  const [extractionResults, setExtractionResults] = useState<ExtractedData[]>([]);
   const [events, setEvents] = useLocalStorage<CalendarEvent[]>('calendarEvents', []);
   const [isGoogleCalendarConnected, setIsGoogleCalendarConnected] = useState(false);
   
@@ -53,23 +44,36 @@ const App: React.FC = () => {
     }, 3000);
   }, []);
 
-  const handleExtract = useCallback(async (file: File | null, text: string) => {
-    if (!file && !text) {
-      showToast('Please provide an image or text to analyze.', 'error');
-      return;
+  const handleExtract = useCallback(async (files: File[], text: string) => {
+    const tasks: { file: File | null; text: string; sourceName: string }[] = [];
+    files.forEach(file => tasks.push({ file, text: '', sourceName: file.name }));
+    text.split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .forEach(line => tasks.push({ file: null, text: line, sourceName: `Pasted Text: "${line.substring(0, 20)}..."` }));
+
+    if (tasks.length === 0) {
+        showToast('Please provide files or text to analyze.', 'error');
+        return;
     }
+
     setIsLoading(true);
-    setExtractedData(null);
+    setExtractionResults([]);
 
     try {
-      const result = await extractInfo(file, text);
-      let sourceData: string | null = null;
-      if (file) {
-        sourceData = await fileToDataUrl(file);
-      } else if (text) {
-        sourceData = text;
-      }
-      setExtractedData({ ...result, source: sourceData, attendees: [] });
+        const extractionPromises = tasks.map(task => extractInfo(task.file, task.text));
+        const extractedInfos = await Promise.all(extractionPromises);
+        
+        const finalResults = extractedInfos.map((info, index) => {
+            const task = tasks[index];
+            return {
+                ...info,
+                clientId: `${Date.now()}-${index}`,
+                source: task.sourceName,
+                attendees: [],
+            };
+        });
+        setExtractionResults(finalResults);
 
     } catch (e) {
       console.error(e);
@@ -118,59 +122,20 @@ const App: React.FC = () => {
     showToast(`Appointment with ${bookerName} booked successfully!`, 'success');
   }, [bookingSettings.appointmentDuration, setEvents, showToast]);
 
-
-  const addEventToCalendar = useCallback((data: ExtractedData) => {
-    if (!data.deadline || !data.title) {
-      showToast("Cannot add to calendar without a title and deadline.", 'error');
-      return;
-    }
-
-    let deadlineISO = data.deadline;
-    if (deadlineISO && deadlineISO.length === 10) {
-        deadlineISO += 'T12:00:00'; // Use noon to avoid timezone boundary issues
-    }
-    const deadline = new Date(deadlineISO);
-
-    if (isNaN(deadline.getTime())) {
-      showToast("Invalid date format. Cannot add to calendar.", 'error');
-      return;
-    }
-    
-    const newEvent: CalendarEvent = {
-      id: '', // Let handleSaveEvent know this is a new event
-      title: data.title,
-      start: deadline.toISOString(),
-      end: new Date(deadline.getTime() + 60 * 60 * 1000).toISOString(),
-      summary: data.summary || '',
-      location: data.location || '',
-      eligibility: data.eligibility || '',
-      source: data.source || undefined,
-      attendees: data.attendees || [],
-    };
-    handleSaveEvent(newEvent);
-    setCurrentView(View.CALENDAR);
-  }, [showToast, handleSaveEvent]);
-
-  const handleExportToICS = useCallback((data: ExtractedData) => {
-     if (!data.deadline || !data.title) {
-      showToast("Cannot export event without a title and deadline.", 'error');
-      return;
-    }
-    let deadlineISO = data.deadline;
-    if (deadlineISO && deadlineISO.length === 10) {
-        deadlineISO += 'T12:00:00'; // Use noon to avoid timezone boundary issues
-    }
-    const deadline = new Date(deadlineISO);
-
-
-    if (isNaN(deadline.getTime())) {
-      showToast("Invalid date format. Cannot export.", 'error');
-      return;
-    }
-
-    try {
-      generateICS({
-        id: Date.now().toString(),
+  const extractedDataToCalendarEvent = (data: ExtractedData): CalendarEvent | null => {
+      if (!data.deadline || !data.title) {
+        return null;
+      }
+      let deadlineISO = data.deadline;
+      if (deadlineISO && deadlineISO.length <= 10) { // YYYY-MM-DD or less
+          deadlineISO += 'T12:00:00'; // Use noon to avoid timezone boundary issues
+      }
+      const deadline = new Date(deadlineISO);
+      if (isNaN(deadline.getTime())) {
+          return null;
+      }
+      return {
+        id: '', 
         title: data.title,
         start: deadline.toISOString(),
         end: new Date(deadline.getTime() + 60 * 60 * 1000).toISOString(),
@@ -179,10 +144,56 @@ const App: React.FC = () => {
         eligibility: data.eligibility || '',
         source: data.source || undefined,
         attendees: data.attendees || [],
-      });
-      showToast('ICS file exported successfully!', 'success');
-    } catch (e) {
-        showToast('Failed to export ICS file.', 'error');
+      };
+  }
+
+  const handleBulkAddToCalendar = useCallback((dataItems: ExtractedData[]) => {
+    let addedCount = 0;
+    const newEvents = dataItems.reduce((acc: CalendarEvent[], data) => {
+        const newEvent = extractedDataToCalendarEvent(data);
+        if (newEvent) {
+            acc.push({ ...newEvent, id: `${Date.now()}-${addedCount++}` });
+        }
+        return acc;
+    }, []);
+    
+    if (newEvents.length > 0) {
+        setEvents(prev => [...prev, ...newEvents]);
+        showToast(`${newEvents.length} event(s) added to calendar!`, 'success');
+        setCurrentView(View.CALENDAR);
+    } else {
+        showToast("No valid events could be added.", 'error');
+    }
+  }, [setEvents, showToast]);
+
+
+  const addEventToCalendar = useCallback((data: ExtractedData) => {
+    const newEvent = extractedDataToCalendarEvent(data);
+    if(newEvent) {
+        handleSaveEvent(newEvent);
+        setCurrentView(View.CALENDAR);
+    } else {
+        showToast("Cannot add to calendar. Title and deadline are required.", 'error');
+    }
+  }, [showToast, handleSaveEvent]);
+
+  const handleBulkExportToICS = useCallback((dataItems: ExtractedData[]) => {
+    let exportedCount = 0;
+    dataItems.forEach(data => {
+        const event = extractedDataToCalendarEvent(data);
+        if (event) {
+            try {
+                generateICS({ ...event, id: `${Date.now()}-${exportedCount}`});
+                exportedCount++;
+            } catch(e) {
+                // error generating one of them, continue
+            }
+        }
+    });
+     if (exportedCount > 0) {
+        showToast(`${exportedCount} ICS file(s) exported successfully!`, 'success');
+    } else {
+        showToast('No valid events to export.', 'error');
     }
   }, [showToast]);
 
@@ -197,7 +208,7 @@ const App: React.FC = () => {
         const deadlineISO = (eventData as ExtractedData).deadline || (eventData as CalendarEvent).start;
         if (!deadlineISO) throw new Error("Event has no date.");
         
-        const deadline = new Date(deadlineISO.length === 10 ? `${deadlineISO}T12:00:00` : deadlineISO); // Use noon to avoid timezone boundary issues
+        const deadline = new Date(deadlineISO.length === 10 ? `${deadlineISO}T12:00:00` : deadlineISO);
         
         const event: CalendarEvent = {
             id: (eventData as CalendarEvent).id || Date.now().toString(),
@@ -216,10 +227,8 @@ const App: React.FC = () => {
         const isExistingEvent = events.some(e => e.id === event.id);
 
         if (isExistingEvent) {
-            // It's an existing event from the calendar view, just update it with the Google ID
             setEvents(prev => prev.map(e => e.id === event.id ? { ...e, googleEventId: googleEvent.id } : e));
         } else {
-            // It's a new event from the results display or a new event from the modal. Add it to our local state.
             const newLocalEvent: CalendarEvent = { ...event, googleEventId: googleEvent.id };
             setEvents(prev => [...prev, newLocalEvent]);
         }
@@ -229,6 +238,20 @@ const App: React.FC = () => {
         showToast(error.message || 'Failed to add to Google Calendar.', 'error');
     }
   };
+
+  const handleBulkAddToGoogleCalendar = async (dataItems: ExtractedData[]) => {
+      let addedCount = 0;
+      showToast(`Adding ${dataItems.length} events to Google Calendar...`, 'success');
+      for (const data of dataItems) {
+          try {
+              await handleAddToGoogleCalendar(data);
+              addedCount++;
+          } catch(e) {
+              console.error(`Failed to add item to Google Calendar: ${data.title}`, e);
+          }
+      }
+      showToast(`${addedCount} of ${dataItems.length} events added to Google Calendar.`, addedCount > 0 ? 'success' : 'error');
+  }
   
   const handleLoginSuccess = () => {
     setIsAuthenticated(true);
@@ -268,11 +291,13 @@ const App: React.FC = () => {
           <DocumentsView
             onExtract={handleExtract}
             isLoading={isLoading}
-            extractedData={extractedData}
+            extractionResults={extractionResults}
             onAddToCalendar={addEventToCalendar}
-            onExportToICS={handleExportToICS}
+            onBulkAddToCalendar={handleBulkAddToCalendar}
+            onBulkExportToICS={handleBulkExportToICS}
             isGoogleCalendarConnected={isGoogleCalendarConnected}
             onAddToGoogleCalendar={handleAddToGoogleCalendar}
+            onBulkAddToGoogleCalendar={handleBulkAddToGoogleCalendar}
           />
         )}
         {currentView === View.CALENDAR && 

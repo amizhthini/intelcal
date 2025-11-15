@@ -4,8 +4,9 @@ export interface ExtractedData {
   eligibility: string | null;
   location: string | null;
   deadline: string | null; // Format: YYYY-MM-DDTHH:MM:SS
-  source: string | null; // Data URL for image or the raw text
+  source: string | null; // Filename or "Pasted Text"
   attendees?: string[];
+  clientId?: string; // a temporary ID for UI management
 }
 
 export interface CalendarEvent {

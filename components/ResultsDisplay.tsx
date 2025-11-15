@@ -1,76 +1,58 @@
 import React, { useState, useEffect } from 'react';
 import { ExtractedData } from '../types';
 import LoadingSpinner from './LoadingSpinner';
-import { CalendarIcon, DownloadIcon, InformationCircleIcon, GoogleIcon } from './Icons';
+import { CalendarIcon, DownloadIcon, InformationCircleIcon, GoogleIcon, TableIcon } from './Icons';
 import AttendeesInput from './AttendeesInput';
 
 interface ResultsDisplayProps {
-  data: ExtractedData | null;
+  results: ExtractedData[];
   isLoading: boolean;
   onAddToCalendar: (data: ExtractedData) => void;
-  onExportToICS: (data: ExtractedData) => void;
+  onBulkAddToCalendar: (data: ExtractedData[]) => void;
+  onBulkExportToICS: (data: ExtractedData[]) => void;
   isGoogleCalendarConnected: boolean;
   onAddToGoogleCalendar: (data: ExtractedData) => void;
+  onBulkAddToGoogleCalendar: (data: ExtractedData[]) => void;
 }
 
-const EditableField: React.FC<{
-    id: string;
-    label: string;
-    value: string;
-    onChange: (value: string) => void;
-    placeholder: string;
-    type?: 'text' | 'textarea' | 'datetime-local';
-}> = ({ id, label, value, onChange, placeholder, type = 'text' }) => {
-    const commonClasses = "mt-1 w-full p-2 bg-slate-100 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition";
-    return (
-        <div>
-            <label htmlFor={id} className="block text-sm font-semibold text-slate-600 dark:text-slate-400">{label}</label>
-            {type === 'textarea' ? (
-                 <textarea
-                    id={id}
-                    value={value}
-                    onChange={(e) => onChange(e.target.value)}
-                    rows={3}
-                    className={commonClasses}
-                    placeholder={placeholder}
-                />
-            ) : type === 'datetime-local' ? (
-                <input
-                    id={id}
-                    type="datetime-local"
-                    value={value}
-                    onChange={(e) => onChange(e.target.value)}
-                    className={`${commonClasses} dark:[color-scheme:dark]`}
-                 />
-            ): (
-                 <input
-                    id={id}
-                    type="text"
-                    value={value}
-                    onChange={(e) => onChange(e.target.value)}
-                    className={commonClasses}
-                    placeholder={placeholder}
-                />
-            )}
-        </div>
-    )
-}
-
-const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ data, isLoading, onAddToCalendar, onExportToICS, isGoogleCalendarConnected, onAddToGoogleCalendar }) => {
-  const [editableData, setEditableData] = useState<ExtractedData | null>(data);
+const ResultsDisplay: React.FC<ResultsDisplayProps> = (props) => {
+  const { results, isLoading, onAddToCalendar, onBulkAddToCalendar, onBulkExportToICS, isGoogleCalendarConnected, onAddToGoogleCalendar, onBulkAddToGoogleCalendar } = props;
+  const [editableResults, setEditableResults] = useState<ExtractedData[]>([]);
+  const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    setEditableData(data);
-  }, [data]);
+    setEditableResults(results);
+    setSelectedClientIds(new Set()); // Reset selection when results change
+  }, [results]);
   
-  const handleFieldChange = (field: keyof ExtractedData, value: string | string[]) => {
-      if (editableData) {
-          setEditableData({ ...editableData, [field]: value });
-      }
+  const handleFieldChange = (clientId: string, field: keyof ExtractedData, value: string | string[]) => {
+      setEditableResults(currentResults => 
+          currentResults.map(r => r.clientId === clientId ? { ...r, [field]: value } : r)
+      );
   }
 
-  const setAttendees = (attendees: string[]) => {
-    handleFieldChange('attendees', attendees);
+  const handleSelect = (clientId: string, isSelected: boolean) => {
+    setSelectedClientIds(prev => {
+        const newSet = new Set(prev);
+        if (isSelected) {
+            newSet.add(clientId);
+        } else {
+            newSet.delete(clientId);
+        }
+        return newSet;
+    });
+  }
+
+  const handleSelectAll = (isSelected: boolean) => {
+    if (isSelected) {
+        setSelectedClientIds(new Set(editableResults.map(r => r.clientId!)));
+    } else {
+        setSelectedClientIds(new Set());
+    }
+  }
+
+  const getSelectedData = () => {
+    return editableResults.filter(r => selectedClientIds.has(r.clientId!));
   }
 
   if (isLoading) {
@@ -84,7 +66,7 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ data, isLoading, onAddT
     );
   }
 
-  if (!data || !editableData) {
+  if (results.length === 0) {
     return (
       <div className="mt-8 text-center bg-white dark:bg-slate-800 p-8 rounded-xl shadow-lg">
         <InformationCircleIcon className="w-12 h-12 mx-auto text-slate-400 dark:text-slate-500" />
@@ -93,66 +75,66 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ data, isLoading, onAddT
       </div>
     );
   }
-  
-  const hasDeadline = editableData.deadline;
-  const deadlineForInput = editableData.deadline ? editableData.deadline.substring(0, 16) : '';
 
+  const isAllSelected = selectedClientIds.size > 0 && selectedClientIds.size === editableResults.length;
 
   return (
     <div className="mt-8 bg-white dark:bg-slate-800 rounded-xl shadow-lg overflow-hidden">
-      <div className="p-6 space-y-4">
+      <div className="p-6">
         <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Extraction Results</h2>
-        <EditableField id="title" label="Title" value={editableData.title || ''} onChange={(val) => handleFieldChange('title', val)} placeholder="No title extracted."/>
-        <EditableField id="summary" label="Summary" value={editableData.summary || ''} onChange={(val) => handleFieldChange('summary', val)} placeholder="No summary extracted." type="textarea"/>
-        <EditableField id="deadline" label="Deadline" value={deadlineForInput} onChange={(val) => handleFieldChange('deadline', val)} placeholder="No deadline extracted." type="datetime-local"/>
-        <EditableField id="eligibility" label="Eligibility" value={editableData.eligibility || ''} onChange={(val) => handleFieldChange('eligibility', val)} placeholder="No eligibility info extracted."/>
-        <EditableField id="location" label="Location" value={editableData.location || ''} onChange={(val) => handleFieldChange('location', val)} placeholder="No location extracted."/>
-        <AttendeesInput attendees={editableData.attendees || []} setAttendees={setAttendees} />
-
-        {editableData.source && (
-            <div>
-                 <label className="block text-sm font-semibold text-slate-600 dark:text-slate-400">Source</label>
-                 <div className="mt-2 p-3 bg-slate-100 dark:bg-slate-900/50 rounded-lg max-h-48 overflow-y-auto">
-                    {editableData.source.startsWith('data:image') ? (
-                        <img src={editableData.source} alt="Source Preview" className="rounded-md max-w-full h-auto" />
-                    ) : (
-                        <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
-                            {editableData.source}
-                        </p>
-                    )}
-                 </div>
-            </div>
-        )}
+        <p className="text-sm text-slate-500 dark:text-slate-400">Review and edit the extracted information below.</p>
       </div>
 
-      {hasDeadline && (
-        <div className="p-6 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <button
-              onClick={() => onAddToCalendar(editableData)}
-              className="flex-1 flex justify-center items-center gap-2 bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all"
-            >
-              <CalendarIcon className="w-5 h-5"/>
-              Add to In-App Calendar
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm text-left text-slate-500 dark:text-slate-400">
+            <thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-300">
+                <tr>
+                    <th scope="col" className="p-4">
+                        <input type="checkbox" checked={isAllSelected} onChange={(e) => handleSelectAll(e.target.checked)} className="w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500"/>
+                    </th>
+                    <th scope="col" className="px-6 py-3 min-w-[150px]">Source</th>
+                    <th scope="col" className="px-6 py-3 min-w-[200px]">Title</th>
+                    <th scope="col" className="px-6 py-3 min-w-[200px]">Deadline</th>
+                    <th scope="col" className="px-6 py-3 min-w-[250px]">Summary</th>
+                    <th scope="col" className="px-6 py-3 min-w-[150px]">Location</th>
+                    <th scope="col" className="px-6 py-3 min-w-[150px]">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {editableResults.map((result) => (
+                    <tr key={result.clientId} className="bg-white border-b dark:bg-slate-800 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600/20">
+                        <td className="w-4 p-4">
+                            <input type="checkbox" checked={selectedClientIds.has(result.clientId!)} onChange={e => handleSelect(result.clientId!, e.target.checked)} className="w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500"/>
+                        </td>
+                        <td className="px-6 py-4 font-medium text-slate-900 dark:text-white whitespace-nowrap">{result.source}</td>
+                        <td className="px-6 py-4"><input type="text" value={result.title || ''} onChange={e => handleFieldChange(result.clientId!, 'title', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500"/></td>
+                        <td className="px-6 py-4"><input type="datetime-local" value={(result.deadline || '').substring(0,16)} onChange={e => handleFieldChange(result.clientId!, 'deadline', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500 dark:[color-scheme:dark]"/></td>
+                        <td className="px-6 py-4"><textarea rows={1} value={result.summary || ''} onChange={e => handleFieldChange(result.clientId!, 'summary', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500 resize-none"/></td>
+                        <td className="px-6 py-4"><input type="text" value={result.location || ''} onChange={e => handleFieldChange(result.clientId!, 'location', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500"/></td>
+                        <td className="px-6 py-4">
+                            <button onClick={() => onAddToCalendar(result)} className="font-medium text-indigo-600 dark:text-indigo-500 hover:underline">Add</button>
+                        </td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+      </div>
+
+      {selectedClientIds.size > 0 && (
+        <div className="p-4 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-700 flex flex-wrap items-center gap-3">
+            <span className="font-semibold">{selectedClientIds.size} item(s) selected</span>
+            <div className="flex-grow"></div>
+            <button onClick={() => onBulkAddToCalendar(getSelectedData())} className="flex items-center gap-2 text-sm bg-indigo-600 text-white font-semibold py-2 px-3 rounded-lg shadow-sm hover:bg-indigo-700">
+                <CalendarIcon className="w-4 h-4"/> Add to In-App Calendar
             </button>
-            <button
-              onClick={() => onExportToICS(editableData)}
-              className="flex-1 flex justify-center items-center gap-2 bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg shadow-sm hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 transition-all"
-            >
-              <DownloadIcon className="w-5 h-5"/>
-              Export (.ics file)
+            <button onClick={() => onBulkExportToICS(getSelectedData())} className="flex items-center gap-2 text-sm bg-slate-600 text-white font-semibold py-2 px-3 rounded-lg shadow-sm hover:bg-slate-700">
+                <DownloadIcon className="w-4 h-4"/> Export (.ics)
             </button>
             {isGoogleCalendarConnected && (
-                <button
-                onClick={() => onAddToGoogleCalendar(editableData)}
-                className="sm:col-span-2 flex-1 flex justify-center items-center gap-2 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 font-semibold py-2 px-4 rounded-lg shadow-sm hover:bg-slate-50 dark:hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all"
-                >
-                <GoogleIcon className="w-5 h-5"/>
-                Add to Google Calendar
+                <button onClick={() => onBulkAddToGoogleCalendar(getSelectedData())} className="flex items-center gap-2 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 font-semibold py-2 px-3 rounded-lg shadow-sm hover:bg-slate-50 dark:hover:bg-slate-600">
+                    <GoogleIcon className="w-4 h-4"/> Add to Google
                 </button>
             )}
-          </div>
-          <p className="text-xs text-center mt-3 text-slate-500 dark:text-slate-400">Add to your calendars. You can invite guests by adding their emails above.</p>
         </div>
       )}
     </div>

@@ -1,34 +1,32 @@
 
 import React, { useState, useRef, useCallback } from 'react';
-import { UploadIcon, LinkIcon, SparklesIcon } from './Icons';
+import { UploadIcon, LinkIcon, SparklesIcon, XCircleIcon } from './Icons';
 import LoadingSpinner from './LoadingSpinner';
 
 interface InputAreaProps {
-  onExtract: (file: File | null, text: string) => void;
+  onExtract: (files: File[], text: string) => void;
   isLoading: boolean;
 }
 
 const InputArea: React.FC<InputAreaProps> = ({ onExtract, isLoading }) => {
-  const [file, setFile] = useState<File | null>(null);
+  const [stagedFiles, setStagedFiles] = useState<File[]>([]);
   const [text, setText] = useState<string>('');
-  const [preview, setPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = event.target.files?.[0];
-    if (selectedFile && selectedFile.type.startsWith('image/')) {
-      setFile(selectedFile);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreview(reader.result as string);
-      };
-      reader.readAsDataURL(selectedFile);
-    } else {
-      setFile(null);
-      setPreview(null);
-      if (selectedFile) {
-        alert('Please upload a valid image file (JPEG, PNG, WEBP). For documents, please take a screenshot.');
-      }
+    const selectedFiles = event.target.files;
+    if (selectedFiles) {
+        const newFiles = Array.from(selectedFiles).filter(file => {
+            if (stagedFiles.some(stagedFile => stagedFile.name === file.name && stagedFile.size === file.size)) {
+                return false; // Prevent duplicates
+            }
+            if (!file.type.startsWith('image/')) {
+                 alert(`Skipping non-image file: ${file.name}. For documents, please use screenshots.`);
+                 return false;
+            }
+            return true;
+        });
+        setStagedFiles(prev => [...prev, ...newFiles]);
     }
     event.target.value = '';
   };
@@ -37,14 +35,13 @@ const InputArea: React.FC<InputAreaProps> = ({ onExtract, isLoading }) => {
     fileInputRef.current?.click();
   };
   
-  const handleRemoveFile = () => {
-    setFile(null);
-    setPreview(null);
+  const handleRemoveFile = (index: number) => {
+    setStagedFiles(prev => prev.filter((_, i) => i !== index));
   }
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    onExtract(file, text);
+    onExtract(stagedFiles, text);
   };
 
   return (
@@ -61,17 +58,27 @@ const InputArea: React.FC<InputAreaProps> = ({ onExtract, isLoading }) => {
               onChange={handleFileChange}
               className="hidden"
               accept="image/png, image/jpeg, image/webp"
+              multiple
             />
-            {preview ? (
-              <div>
-                <img src={preview} alt="Preview" className="mx-auto max-h-48 rounded-md" />
-                 <button type="button" onClick={(e) => { e.stopPropagation(); handleRemoveFile(); }} className="mt-2 text-sm text-red-500 hover:text-red-700">Remove Image</button>
+            {stagedFiles.length > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 text-left">
+                {stagedFiles.map((file, index) => (
+                    <div key={index} className="relative group/file">
+                        <img src={URL.createObjectURL(file)} alt={file.name} className="w-full h-24 object-cover rounded-md" />
+                        <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 group-hover/file:opacity-100 transition-opacity">
+                            <button type="button" onClick={(e) => { e.stopPropagation(); handleRemoveFile(index); }} className="p-1 bg-red-600 text-white rounded-full">
+                                <XCircleIcon className="w-5 h-5"/>
+                            </button>
+                        </div>
+                        <p className="text-xs truncate mt-1">{file.name}</p>
+                    </div>
+                ))}
               </div>
             ) : (
               <div className="flex flex-col items-center text-slate-500 dark:text-slate-400">
                 <UploadIcon className="w-12 h-12 mb-2" />
-                <p className="font-semibold text-slate-700 dark:text-slate-300">Click to upload an image</p>
-                <p className="text-sm">PNG, JPG, or WEBP. (For docs, use screenshots)</p>
+                <p className="font-semibold text-slate-700 dark:text-slate-300">Click to upload images</p>
+                <p className="text-sm">You can select multiple files. (For docs, use screenshots)</p>
               </div>
             )}
           </div>
@@ -79,7 +86,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onExtract, isLoading }) => {
           <div>
             <label htmlFor="text-input" className="flex items-center mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">
               <LinkIcon className="w-5 h-5 mr-2" />
-              Or paste text content here
+              Or paste text/links (one per line)
             </label>
             <textarea
               id="text-input"
@@ -95,7 +102,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onExtract, isLoading }) => {
         <div className="mt-6">
           <button
             type="submit"
-            disabled={isLoading || (!file && !text)}
+            disabled={isLoading || (stagedFiles.length === 0 && !text)}
             className="w-full flex justify-center items-center gap-2 bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-slate-400 disabled:cursor-not-allowed transition-all"
           >
             {isLoading ? (

@@ -4,13 +4,15 @@ import InputArea from './InputArea';
 import ResultsDisplay from './ResultsDisplay';
 
 interface DocumentsViewProps {
-  onExtract: (file: File | null, text: string) => void;
+  onExtract: (files: File[], text: string) => void;
   isLoading: boolean;
-  extractedData: ExtractedData | null;
+  extractionResults: ExtractedData[];
   onAddToCalendar: (data: ExtractedData) => void;
-  onExportToICS: (data: ExtractedData) => void;
+  onBulkAddToCalendar: (data: ExtractedData[]) => void;
+  onBulkExportToICS: (data: ExtractedData[]) => void;
   isGoogleCalendarConnected: boolean;
   onAddToGoogleCalendar: (data: ExtractedData) => void;
+  onBulkAddToGoogleCalendar: (data: ExtractedData[]) => void;
 }
 
 const DocumentsView: React.FC<DocumentsViewProps> = (props) => {
@@ -18,12 +20,14 @@ const DocumentsView: React.FC<DocumentsViewProps> = (props) => {
     <>
       <InputArea onExtract={props.onExtract} isLoading={props.isLoading} />
       <ResultsDisplay
-        data={props.extractedData}
+        results={props.extractionResults}
         isLoading={props.isLoading}
         onAddToCalendar={props.onAddToCalendar}
-        onExportToICS={props.onExportToICS}
+        onBulkAddToCalendar={props.onBulkAddToCalendar}
+        onBulkExportToICS={props.onBulkExportToICS}
         isGoogleCalendarConnected={props.isGoogleCalendarConnected}
         onAddToGoogleCalendar={props.onAddToGoogleCalendar}
+        onBulkAddToGoogleCalendar={props.onBulkAddToGoogleCalendar}
       />
     </>
   );
