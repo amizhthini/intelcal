@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { CalendarEvent } from '../types';
 import EventModal from './EventModal';
 import { PlusIcon, ChevronLeftIcon, ChevronRightIcon } from './Icons';
+import { getCategoryHexColor } from '../utils/color';
 
 interface CalendarViewProps {
   events: CalendarEvent[];
@@ -35,6 +36,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ events, setEvents, showToas
       start: date.toISOString(),
       end: new Date(date.getTime() + 60 * 60 * 1000).toISOString(),
       attendees: [],
+      category: 'General',
     });
     setIsModalOpen(true);
   };
@@ -147,7 +149,12 @@ const CalendarView: React.FC<CalendarViewProps> = ({ events, setEvents, showToas
                 </time>
                 <div className="mt-1 space-y-1 overflow-y-auto max-h-full">
                     {dayEvents.slice(0, 2).map(event => (
-                    <div key={event.id} onClick={(e) => { e.stopPropagation(); openModalForEdit(event); }} className="bg-indigo-100 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-200 text-[10px] sm:text-xs font-medium p-1 rounded truncate cursor-pointer hover:opacity-80">
+                    <div 
+                        key={event.id} 
+                        onClick={(e) => { e.stopPropagation(); openModalForEdit(event); }} 
+                        className="bg-slate-100 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 text-[10px] sm:text-xs font-medium p-1 rounded truncate cursor-pointer hover:opacity-80 border-l-4"
+                        style={{ borderLeftColor: getCategoryHexColor(event.category) }}
+                    >
                         {event.title}
                     </div>
                     ))}
@@ -214,8 +221,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({ events, setEvents, showToas
                                     <div
                                         key={event.id}
                                         onClick={() => openModalForEdit(event)}
-                                        className="absolute left-1 right-1 bg-indigo-100 dark:bg-indigo-900/70 p-1 rounded text-indigo-800 dark:text-indigo-200 text-xs overflow-hidden cursor-pointer"
-                                        style={{ top: `${top}%`, height: `${height}%`}}
+                                        className="absolute left-1 right-1 bg-slate-100 dark:bg-slate-900/70 p-1 rounded text-slate-800 dark:text-slate-200 text-xs overflow-hidden cursor-pointer border-l-4"
+                                        style={{ top: `${top}%`, height: `${height}%`, borderLeftColor: getCategoryHexColor(event.category) }}
                                     >
                                         <p className="font-semibold truncate">{event.title}</p>
                                         <p className="opacity-70">{start.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})} - {end.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</p>
@@ -228,7 +235,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ events, setEvents, showToas
             </div>
         </div>
     );
-  }, [events]);
+  }, [events, openModalForEdit]);
 
   const renderWeekView = () => {
     const startOfWeek = new Date(currentDate);

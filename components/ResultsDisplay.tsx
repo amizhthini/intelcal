@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ExtractedData } from '../types';
 import LoadingSpinner from './LoadingSpinner';
-import { CalendarIcon, DownloadIcon, InformationCircleIcon, GoogleIcon, TableIcon } from './Icons';
-import AttendeesInput from './AttendeesInput';
+import { CalendarIcon, DownloadIcon, InformationCircleIcon, GoogleIcon } from './Icons';
+import { getCategoryColorClasses } from '../utils/color';
 
 interface ResultsDisplayProps {
   results: ExtractedData[];
@@ -71,7 +71,7 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = (props) => {
       <div className="mt-8 text-center bg-white dark:bg-slate-800 p-8 rounded-xl shadow-lg">
         <InformationCircleIcon className="w-12 h-12 mx-auto text-slate-400 dark:text-slate-500" />
         <h3 className="mt-4 text-lg font-semibold text-slate-700 dark:text-slate-200">Ready to Extract</h3>
-        <p className="mt-1 text-slate-500 dark:text-slate-400">Upload an image or paste some text to get started.</p>
+        <p className="mt-1 text-slate-500 dark:text-slate-400">Upload documents, images, or paste text to get started.</p>
       </div>
     );
   }
@@ -93,29 +93,38 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = (props) => {
                         <input type="checkbox" checked={isAllSelected} onChange={(e) => handleSelectAll(e.target.checked)} className="w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500"/>
                     </th>
                     <th scope="col" className="px-6 py-3 min-w-[150px]">Source</th>
+                    <th scope="col" className="px-6 py-3 min-w-[150px]">Category</th>
                     <th scope="col" className="px-6 py-3 min-w-[200px]">Title</th>
                     <th scope="col" className="px-6 py-3 min-w-[200px]">Deadline</th>
                     <th scope="col" className="px-6 py-3 min-w-[250px]">Summary</th>
                     <th scope="col" className="px-6 py-3 min-w-[150px]">Location</th>
-                    <th scope="col" className="px-6 py-3 min-w-[150px]">Actions</th>
+                    <th scope="col" className="px-6 py-3 min-w-[100px]">Actions</th>
                 </tr>
             </thead>
             <tbody>
-                {editableResults.map((result) => (
-                    <tr key={result.clientId} className="bg-white border-b dark:bg-slate-800 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600/20">
-                        <td className="w-4 p-4">
-                            <input type="checkbox" checked={selectedClientIds.has(result.clientId!)} onChange={e => handleSelect(result.clientId!, e.target.checked)} className="w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500"/>
-                        </td>
-                        <td className="px-6 py-4 font-medium text-slate-900 dark:text-white whitespace-nowrap">{result.source}</td>
-                        <td className="px-6 py-4"><input type="text" value={result.title || ''} onChange={e => handleFieldChange(result.clientId!, 'title', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500"/></td>
-                        <td className="px-6 py-4"><input type="datetime-local" value={(result.deadline || '').substring(0,16)} onChange={e => handleFieldChange(result.clientId!, 'deadline', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500 dark:[color-scheme:dark]"/></td>
-                        <td className="px-6 py-4"><textarea rows={1} value={result.summary || ''} onChange={e => handleFieldChange(result.clientId!, 'summary', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500 resize-none"/></td>
-                        <td className="px-6 py-4"><input type="text" value={result.location || ''} onChange={e => handleFieldChange(result.clientId!, 'location', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500"/></td>
-                        <td className="px-6 py-4">
-                            <button onClick={() => onAddToCalendar(result)} className="font-medium text-indigo-600 dark:text-indigo-500 hover:underline">Add</button>
-                        </td>
-                    </tr>
-                ))}
+                {editableResults.map((result) => {
+                    const colorClasses = getCategoryColorClasses(result.category);
+                    return (
+                        <tr key={result.clientId} className="bg-white border-b dark:bg-slate-800 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600/20">
+                            <td className="w-4 p-4">
+                                <input type="checkbox" checked={selectedClientIds.has(result.clientId!)} onChange={e => handleSelect(result.clientId!, e.target.checked)} className="w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500"/>
+                            </td>
+                            <td className="px-6 py-4 font-medium text-slate-900 dark:text-white whitespace-nowrap">{result.source}</td>
+                            <td className="px-6 py-4">
+                                <div className={`px-2 py-1 rounded-full text-xs font-semibold inline-block ${colorClasses.background} ${colorClasses.text}`}>
+                                    <input type="text" value={result.category || ''} onChange={e => handleFieldChange(result.clientId!, 'category', e.target.value)} className="w-full bg-transparent focus:outline-none"/>
+                                </div>
+                            </td>
+                            <td className="px-6 py-4"><input type="text" value={result.title || ''} onChange={e => handleFieldChange(result.clientId!, 'title', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500"/></td>
+                            <td className="px-6 py-4"><input type="datetime-local" value={(result.deadline || '').substring(0,16)} onChange={e => handleFieldChange(result.clientId!, 'deadline', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500 dark:[color-scheme:dark]"/></td>
+                            <td className="px-6 py-4"><textarea rows={1} value={result.summary || ''} onChange={e => handleFieldChange(result.clientId!, 'summary', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500 resize-none"/></td>
+                            <td className="px-6 py-4"><input type="text" value={result.location || ''} onChange={e => handleFieldChange(result.clientId!, 'location', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500"/></td>
+                            <td className="px-6 py-4">
+                                <button onClick={() => onAddToCalendar(result)} className="font-medium text-indigo-600 dark:text-indigo-500 hover:underline">Add</button>
+                            </td>
+                        </tr>
+                    )
+                })}
             </tbody>
         </table>
       </div>

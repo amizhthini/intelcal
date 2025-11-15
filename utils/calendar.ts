@@ -12,6 +12,7 @@ export const generateICS = (event: CalendarEvent) => {
   let description = '';
   if(event.summary) description += `Summary: ${event.summary}\\n\\n`;
   if(event.eligibility) description += `Eligibility: ${event.eligibility}\\n\\n`;
+  if(event.category) description += `Category: ${event.category}\\n\\n`;
   if(event.source) {
     description += `Source: ${event.source}\\n\\n`;
   }
@@ -81,6 +82,7 @@ Event: ${event.title}
 Date: ${startDate.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
 Time: ${startDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
 Location: ${event.location || 'Not specified'}
+Category: ${event.category || 'Not specified'}
 
 Summary:
 ${event.summary || 'No summary provided.'}

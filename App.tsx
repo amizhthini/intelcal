@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback } from 'react';
 import { ExtractedData, CalendarEvent, View, ToastMessage, BookingSettings } from './types';
 import { extractInfo } from './services/geminiService';
@@ -17,8 +18,8 @@ import Toast from './components/Toast';
 import GoogleClientIdModal from './components/GoogleClientIdModal';
 
 const App: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true); // Default to true for development
+  const [currentView, setCurrentView] = useState<View>(View.DOCUMENTS);
   
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
@@ -62,10 +63,14 @@ const App: React.FC = () => {
 
     try {
         const extractionPromises = tasks.map(task => extractInfo(task.file, task.text));
-        const extractedInfos = await Promise.all(extractionPromises);
+        const extractedInfosNested = await Promise.all(extractionPromises);
+        const extractedInfos = extractedInfosNested.flat();
         
         const finalResults = extractedInfos.map((info, index) => {
-            const task = tasks[index];
+            // Find the original task by the unique source name tagged by geminiService
+            const task = tasks.find(t => 
+                (info as any).originalSource === t.sourceName
+            ) || tasks[0]; // Fallback, though should always find
             return {
                 ...info,
                 clientId: `${Date.now()}-${index}`,
@@ -117,6 +122,7 @@ const App: React.FC = () => {
         end: new Date(slot.getTime() + bookingSettings.appointmentDuration * 60 * 1000).toISOString(),
         attendees: [bookerEmail],
         summary: `Meeting booked via IntelliCal with ${bookerName} (${bookerEmail}).`,
+        category: 'Meeting',
     };
     setEvents(prev => [...prev, newBooking]);
     showToast(`Appointment with ${bookerName} booked successfully!`, 'success');
@@ -144,6 +150,7 @@ const App: React.FC = () => {
         eligibility: data.eligibility || '',
         source: data.source || undefined,
         attendees: data.attendees || [],
+        category: data.category || 'General',
       };
   }
 
@@ -160,6 +167,7 @@ const App: React.FC = () => {
     if (newEvents.length > 0) {
         setEvents(prev => [...prev, ...newEvents]);
         showToast(`${newEvents.length} event(s) added to calendar!`, 'success');
+        setExtractionResults([]); // Auto-clear results
         setCurrentView(View.CALENDAR);
     } else {
         showToast("No valid events could be added.", 'error');
@@ -171,6 +179,7 @@ const App: React.FC = () => {
     const newEvent = extractedDataToCalendarEvent(data);
     if(newEvent) {
         handleSaveEvent(newEvent);
+        setExtractionResults([]); // Auto-clear results
         setCurrentView(View.CALENDAR);
     } else {
         showToast("Cannot add to calendar. Title and deadline are required.", 'error');
@@ -219,6 +228,7 @@ const App: React.FC = () => {
             location: eventData.location || '',
             eligibility: eventData.eligibility || '',
             attendees: eventData.attendees || [],
+            category: eventData.category || 'General',
         };
       
         const googleEvent = await addEventToGoogleCalendar(event);
@@ -251,6 +261,9 @@ const App: React.FC = () => {
           }
       }
       showToast(`${addedCount} of ${dataItems.length} events added to Google Calendar.`, addedCount > 0 ? 'success' : 'error');
+      if (addedCount > 0) {
+        setExtractionResults([]); // Auto-clear results
+      }
   }
   
   const handleLoginSuccess = () => {

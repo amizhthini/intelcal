@@ -5,6 +5,7 @@ export interface ExtractedData {
   location: string | null;
   deadline: string | null; // Format: YYYY-MM-DDTHH:MM:SS
   source: string | null; // Filename or "Pasted Text"
+  category?: string; // e.g., "Business", "Personal", "Grant"
   attendees?: string[];
   clientId?: string; // a temporary ID for UI management
 }
@@ -18,6 +19,7 @@ export interface CalendarEvent {
   location?: string;
   eligibility?: string;
   source?: string;
+  category?: string;
   attendees?: string[];
   googleEventId?: string; // To store the event ID from Google Calendar for syncing
 }

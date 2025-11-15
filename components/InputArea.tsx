@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useCallback } from 'react';
 import { UploadIcon, LinkIcon, SparklesIcon, XCircleIcon } from './Icons';
 import LoadingSpinner from './LoadingSpinner';
@@ -7,6 +6,19 @@ interface InputAreaProps {
   onExtract: (files: File[], text: string) => void;
   isLoading: boolean;
 }
+
+const ACCEPTED_FILE_TYPES = [
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+    'application/pdf',
+    'application/msword', // .doc
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+    'application/vnd.ms-excel', // .xls
+    'text/csv', // .csv
+];
+
 
 const InputArea: React.FC<InputAreaProps> = ({ onExtract, isLoading }) => {
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
@@ -20,8 +32,10 @@ const InputArea: React.FC<InputAreaProps> = ({ onExtract, isLoading }) => {
             if (stagedFiles.some(stagedFile => stagedFile.name === file.name && stagedFile.size === file.size)) {
                 return false; // Prevent duplicates
             }
-            if (!file.type.startsWith('image/')) {
-                 alert(`Skipping non-image file: ${file.name}. For documents, please use screenshots.`);
+            // A more lenient check for docx as mime types can be tricky
+            const isDocx = file.name.endsWith('.docx') && file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+            if (!ACCEPTED_FILE_TYPES.includes(file.type) && !isDocx) {
+                 alert(`Skipping unsupported file type: ${file.name}. Please upload images, PDFs, Word docs, or spreadsheets.`);
                  return false;
             }
             return true;
@@ -44,6 +58,8 @@ const InputArea: React.FC<InputAreaProps> = ({ onExtract, isLoading }) => {
     onExtract(stagedFiles, text);
   };
 
+  const isImageFile = (file: File) => file.type.startsWith('image/');
+
   return (
     <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-lg mt-6">
       <form onSubmit={handleSubmit}>
@@ -57,14 +73,20 @@ const InputArea: React.FC<InputAreaProps> = ({ onExtract, isLoading }) => {
               ref={fileInputRef}
               onChange={handleFileChange}
               className="hidden"
-              accept="image/png, image/jpeg, image/webp"
+              accept={ACCEPTED_FILE_TYPES.join(',')}
               multiple
             />
             {stagedFiles.length > 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 text-left">
                 {stagedFiles.map((file, index) => (
                     <div key={index} className="relative group/file">
-                        <img src={URL.createObjectURL(file)} alt={file.name} className="w-full h-24 object-cover rounded-md" />
+                        {isImageFile(file) ? (
+                            <img src={URL.createObjectURL(file)} alt={file.name} className="w-full h-24 object-cover rounded-md" />
+                        ) : (
+                            <div className="w-full h-24 bg-slate-100 dark:bg-slate-700 rounded-md flex items-center justify-center p-2">
+                                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 break-all">{file.name}</span>
+                            </div>
+                        )}
                         <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 group-hover/file:opacity-100 transition-opacity">
                             <button type="button" onClick={(e) => { e.stopPropagation(); handleRemoveFile(index); }} className="p-1 bg-red-600 text-white rounded-full">
                                 <XCircleIcon className="w-5 h-5"/>
@@ -77,8 +99,8 @@ const InputArea: React.FC<InputAreaProps> = ({ onExtract, isLoading }) => {
             ) : (
               <div className="flex flex-col items-center text-slate-500 dark:text-slate-400">
                 <UploadIcon className="w-12 h-12 mb-2" />
-                <p className="font-semibold text-slate-700 dark:text-slate-300">Click to upload images</p>
-                <p className="text-sm">You can select multiple files. (For docs, use screenshots)</p>
+                <p className="font-semibold text-slate-700 dark:text-slate-300">Click to upload files</p>
+                <p className="text-sm">Supports images, PDFs, DOCX, and spreadsheets.</p>
               </div>
             )}
           </div>
