@@ -137,7 +137,7 @@ const App: React.FC = () => {
     }
     
     const newEvent: CalendarEvent = {
-      id: Date.now().toString(),
+      id: '', // Let handleSaveEvent know this is a new event
       title: data.title,
       start: deadline.toISOString(),
       end: new Date(deadline.getTime() + 60 * 60 * 1000).toISOString(),
@@ -149,7 +149,7 @@ const App: React.FC = () => {
     };
     handleSaveEvent(newEvent);
     setCurrentView(View.CALENDAR);
-  }, [setEvents, showToast, handleSaveEvent]);
+  }, [showToast, handleSaveEvent]);
 
   const handleExportToICS = useCallback((data: ExtractedData) => {
      if (!data.deadline || !data.title) {
