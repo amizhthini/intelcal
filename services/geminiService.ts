@@ -111,7 +111,8 @@ const extractFromSheet = async (file: File): Promise<ExtractedDataResult[]> => {
 }
 
 const convertFileToTextOrGenerativePart = async (file: File) => {
-    if (file.type.includes('spreadsheet') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv')) {
+    const mimeType = file.type || '';
+    if (mimeType.includes('spreadsheet') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv') || mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
         const data = await file.arrayBuffer();
         const workbook = XLSX.read(data);
         const firstSheetName = workbook.SheetNames[0];
@@ -119,7 +120,7 @@ const convertFileToTextOrGenerativePart = async (file: File) => {
         const csvData = XLSX.utils.sheet_to_csv(worksheet);
         return { text: `File content from ${file.name} (spreadsheet):\n\n${csvData}` };
     }
-    if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.name.endsWith('.docx')) {
+    if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.name.endsWith('.docx')) {
         const docxText = await extractFromDocx(file);
         return { text: `File content from ${file.name} (Word document):\n\n${docxText}` };
     }
@@ -214,27 +215,28 @@ export const structureDataFromTemplate = async (templateFile: File, dataFile: Fi
   const dataPart = await convertFileToTextOrGenerativePart(dataFile);
 
   const prompt = `
-    You are a highly intelligent data structuring assistant. Your task is to reformat the content of a "Data Document" to perfectly match the structure and layout of a "Template Document".
+You are an expert data transformation AI. Your job is to act like a 'mail merge' function. You will receive a "Template Document" which defines a structure, and a "Data Document" which contains raw information.
 
-    INSTRUCTIONS:
-    1. Analyze the "Template Document" to understand its formatting, including headings, paragraphs, lists, and any other structural elements.
-    2. Read the "Data Document" to find the corresponding information.
-    3. Generate a new document where the information from the "Data Document" is placed into the structure of the "Template Document".
-    4. The output should be plain text that mimics the template's layout. Do NOT output Markdown, JSON, or any other code format unless the template itself is in that format.
-    5. If the template contains placeholders (e.g., "[Name]", "[Date]"), replace them with the correct data from the data document.
-    6. If the data document is missing information for a field in the template, leave that field blank or use a clear indicator like "[Not Found]".
-
-    Here are the documents:
+Your task is to:
+1.  Thoroughly analyze the structure, layout, and formatting of the "Template Document". Identify all placeholders, sections, and formatting cues.
+2.  Carefully extract all relevant pieces of information from the "Data Document".
+3.  Generate a new document by populating the structure from the "Template Document" with the extracted information from the "Data Document".
+4.  The final output must strictly follow the template's format. Do not add any extra text, explanations, or formatting like Markdown unless it was present in the template.
+5.  If you cannot find a specific piece of information in the "Data Document" to fill a part of the template, leave that part blank or write "[DATA NOT FOUND]".
   `;
 
   const response = await ai.models.generateContent({
     model: model,
-    contents: [
-      { parts: [{ text: prompt }] },
-      { parts: [{ text: "TEMPLATE DOCUMENT:" }, templatePart] },
-      { parts: [{ text: "DATA DOCUMENT:" }, dataPart] },
-      { parts: [{ text: "Please provide the ORGANIZED OUTPUT based on the instructions." }] },
-    ],
+    contents: [{
+      parts: [
+        { text: prompt },
+        { text: "\n\n--- TEMPLATE DOCUMENT ---\n" },
+        templatePart,
+        { text: "\n\n--- DATA DOCUMENT ---\n" },
+        dataPart,
+        { text: "\n\n--- ORGANIZED OUTPUT ---\n" }
+      ]
+    }],
   });
 
   return response.text;
