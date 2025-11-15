@@ -14,6 +14,7 @@ import DashboardView from './components/DashboardView';
 import DocumentsView from './components/DocumentsView';
 import CalendarView from './components/CalendarView';
 import BookingView from './components/BookingView';
+import DataStructuringView from './components/DataStructuringView';
 import NavigationBar from './components/NavigationBar';
 import Toast from './components/Toast';
 import GoogleClientIdModal from './components/GoogleClientIdModal';
@@ -400,6 +401,9 @@ const App: React.FC = () => {
                 onBookAppointment={handleBookAppointment}
                 showToast={showToast}
             />
+        }
+        {currentView === View.DATA_STRUCTURING &&
+            <DataStructuringView showToast={showToast} />
         }
       </main>
       <NavigationBar currentView={currentView} setCurrentView={setCurrentView} />

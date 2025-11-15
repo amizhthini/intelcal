@@ -35,6 +35,7 @@ export enum View {
   DOCUMENTS = 'documents',
   CALENDAR = 'calendar',
   BOOKING = 'booking',
+  DATA_STRUCTURING = 'data_structuring',
 }
 
 export interface ToastMessage {

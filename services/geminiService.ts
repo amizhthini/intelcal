@@ -18,7 +18,7 @@ const getDeadlineFallback = (): string => {
     return `${year}-${month}-${day}T23:59:59`;
 };
 
-const fileToGenerativePart = async (file: File) => {
+export const fileToGenerativePart = async (file: File) => {
   const base64EncodedDataPromise = new Promise<string>((resolve) => {
     const reader = new FileReader();
     reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
@@ -110,6 +110,23 @@ const extractFromSheet = async (file: File): Promise<ExtractedDataResult[]> => {
     }
 }
 
+const convertFileToTextOrGenerativePart = async (file: File) => {
+    if (file.type.includes('spreadsheet') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv')) {
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data);
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const csvData = XLSX.utils.sheet_to_csv(worksheet);
+        return { text: `File content from ${file.name} (spreadsheet):\n\n${csvData}` };
+    }
+    if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.name.endsWith('.docx')) {
+        const docxText = await extractFromDocx(file);
+        return { text: `File content from ${file.name} (Word document):\n\n${docxText}` };
+    }
+    // Default to sending the file directly for supported mime types like images/pdf
+    return fileToGenerativePart(file);
+};
+
 
 export const extractInfo = async (file: File | null, text: string): Promise<ExtractedDataResult[]> => {
   const originalSourceName = file?.name || `Pasted Text: "${text.substring(0, 20)}..."`;
@@ -184,4 +201,41 @@ export const extractInfo = async (file: File | null, text: string): Promise<Extr
       console.error("Failed to parse Gemini response:", response.text);
       throw new Error("Could not parse the response from the AI model.");
   }
+};
+
+export const structureDataFromTemplate = async (templateFile: File, dataFile: File): Promise<string> => {
+  if (!process.env.API_KEY) {
+    throw new Error("API_KEY environment variable is not set.");
+  }
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const model = "gemini-2.5-pro"; // Use Pro for better structural understanding
+
+  const templatePart = await convertFileToTextOrGenerativePart(templateFile);
+  const dataPart = await convertFileToTextOrGenerativePart(dataFile);
+
+  const prompt = `
+    You are a highly intelligent data structuring assistant. Your task is to reformat the content of a "Data Document" to perfectly match the structure and layout of a "Template Document".
+
+    INSTRUCTIONS:
+    1. Analyze the "Template Document" to understand its formatting, including headings, paragraphs, lists, and any other structural elements.
+    2. Read the "Data Document" to find the corresponding information.
+    3. Generate a new document where the information from the "Data Document" is placed into the structure of the "Template Document".
+    4. The output should be plain text that mimics the template's layout. Do NOT output Markdown, JSON, or any other code format unless the template itself is in that format.
+    5. If the template contains placeholders (e.g., "[Name]", "[Date]"), replace them with the correct data from the data document.
+    6. If the data document is missing information for a field in the template, leave that field blank or use a clear indicator like "[Not Found]".
+
+    Here are the documents:
+  `;
+
+  const response = await ai.models.generateContent({
+    model: model,
+    contents: [
+      { parts: [{ text: prompt }] },
+      { parts: [{ text: "TEMPLATE DOCUMENT:" }, templatePart] },
+      { parts: [{ text: "DATA DOCUMENT:" }, dataPart] },
+      { parts: [{ text: "Please provide the ORGANIZED OUTPUT based on the instructions." }] },
+    ],
+  });
+
+  return response.text;
 };
