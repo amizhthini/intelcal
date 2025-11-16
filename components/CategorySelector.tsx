@@ -2,21 +2,19 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Category } from '../types';
 import { COLOR_PALETTE } from '../utils/categories';
-import { CheckCircleIcon } from './Icons';
+import { getCategoryHexColor } from '../utils/color';
 
 interface CategorySelectorProps {
-    value: string; // The name of the category
-    onChange: (categoryName: string, isNew?: boolean) => void;
-    onColorChange: (categoryName: string, newColor: string) => void;
+    selected: string[];
+    onChange: (categoryNames: string[], newCategoryData?: {name: string, color: string}) => void;
     allCategories: Category[];
 }
 
-const CategorySelector: React.FC<CategorySelectorProps> = ({ value, onChange, onColorChange, allCategories }) => {
+const CategorySelector: React.FC<CategorySelectorProps> = ({ selected, onChange, allCategories }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [filter, setFilter] = useState('');
     const wrapperRef = useRef<HTMLDivElement>(null);
 
-    const selectedCategory = useMemo(() => allCategories.find(c => c.name.toLowerCase() === value.toLowerCase()), [allCategories, value]);
     const filteredCategories = useMemo(() => {
         if (!filter) return allCategories;
         return allCategories.filter(c => c.name.toLowerCase().includes(filter.toLowerCase()));
@@ -33,34 +31,63 @@ const CategorySelector: React.FC<CategorySelectorProps> = ({ value, onChange, on
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
     
-    const handleSelectCategory = (category: Category) => {
-        onChange(category.name);
-        setIsOpen(false);
-        setFilter('');
+    const handleToggleCategory = (categoryName: string) => {
+        const newSelected = selected.includes(categoryName)
+            ? selected.filter(c => c !== categoryName)
+            : [...selected, categoryName];
+        
+        // Ensure 'General' is added if the list becomes empty
+        if (newSelected.length === 0) {
+            onChange(['General']);
+        } else {
+            // Remove 'General' if another category is selected
+            onChange(newSelected.filter(c => c !== 'General' || newSelected.length === 1));
+        }
     };
 
     const handleCreateCategory = () => {
         if (filter && !allCategories.some(c => c.name.toLowerCase() === filter.toLowerCase())) {
-            onChange(filter, true); 
+            const newCategory = {
+                name: filter,
+                color: COLOR_PALETTE[allCategories.length % COLOR_PALETTE.length],
+            };
+            const newSelected = [...selected.filter(c => c !== 'General'), filter];
+            onChange(newSelected, newCategory);
             setIsOpen(false);
             setFilter('');
         }
     };
+    
+    const renderSelected = () => {
+        if (!selected || selected.length === 0) {
+            return <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Assign Category</span>;
+        }
+        return (
+             <div className="flex items-center gap-1.5 flex-wrap">
+                {selected.map(catName => (
+                    <span
+                        key={catName}
+                        className="flex items-center gap-1.5 text-xs font-semibold px-2 py-0.5 rounded-full"
+                        style={{
+                            backgroundColor: getCategoryHexColor(catName, allCategories) + '20', // 20% opacity
+                            color: getCategoryHexColor(catName, allCategories),
+                        }}
+                    >
+                        {catName}
+                    </span>
+                ))}
+            </div>
+        )
+    }
 
     return (
         <div className="relative w-full" ref={wrapperRef}>
             <button
                 type="button"
                 onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center justify-between w-full text-left p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700"
+                className="w-full text-left p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 min-h-[30px]"
             >
-                <span className="flex items-center gap-2 truncate">
-                    {selectedCategory && <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: selectedCategory.color }}></div>}
-                    <span className="text-sm font-medium">{value || 'Select Category'}</span>
-                </span>
-                <svg className="w-4 h-4 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9" />
-                </svg>
+                {renderSelected()}
             </button>
 
             {isOpen && (
@@ -78,25 +105,18 @@ const CategorySelector: React.FC<CategorySelectorProps> = ({ value, onChange, on
                     </div>
                     <ul className="max-h-48 overflow-y-auto">
                         {filteredCategories.map(cat => (
-                            <li key={cat.name} className="group/item flex items-center justify-between p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer">
-                                <span className="flex items-center gap-2 text-sm" onClick={() => handleSelectCategory(cat)}>
+                            <li key={cat.name} className="flex items-center p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    id={`cat-${cat.name}`}
+                                    checked={selected.includes(cat.name)}
+                                    onChange={() => handleToggleCategory(cat.name)}
+                                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                />
+                                <label htmlFor={`cat-${cat.name}`} className="ml-2 flex items-center gap-2 text-sm cursor-pointer">
                                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.color }}></div>
                                     {cat.name}
-                                </span>
-                                <div className="hidden group-hover/item:flex items-center gap-0.5">
-                                    {COLOR_PALETTE.map(color => (
-                                        <button
-                                            key={color}
-                                            type="button"
-                                            onClick={() => onColorChange(cat.name, color)}
-                                            className="w-4 h-4 rounded-full border border-white/20 flex items-center justify-center"
-                                            style={{ backgroundColor: color }}
-                                            aria-label={`Set color to ${color}`}
-                                        >
-                                          {cat.color === color && <div className="w-2 h-2 rounded-full bg-white/70"></div>}
-                                        </button>
-                                    ))}
-                                </div>
+                                </label>
                             </li>
                         ))}
                     </ul>

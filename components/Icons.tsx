@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 export const UploadIcon: React.FC<{ className?: string }> = (props) => (
@@ -146,4 +147,37 @@ export const TableIcon: React.FC<{ className?: string }> = (props) => (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125V6.375m1.125 13.125A1.125 1.125 0 004.5 18.375h15M3.375 19.5V6.375m0-1.125A1.125 1.125 0 014.5 4.125h15a1.125 1.125 0 011.125 1.125M4.5 4.125v15.375m0-15.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125h15c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125h-15z" />
     </svg>
+);
+
+export const CalendarWeekIcon: React.FC<{ className?: string }> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0h18M12 12.75h.008v.008H12v-.008zm-3 0h.008v.008H9v-.008zm6 0h.008v.008h-.008v-.008zm-3 3h.008v.008H12v-.008zm-3 0h.008v.008H9v-.008zm6 0h.008v.008h-.008v-.008z" />
+    </svg>
+);
+
+export const TagIcon: React.FC<{ className?: string }> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6 6h.008v.008H6V6z" />
+    </svg>
+);
+
+export const RefreshIcon: React.FC<{ className?: string }> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0011.664 0l3.181-3.183m-11.664 0l3.181-3.183a8.25 8.25 0 00-11.664 0l3.181 3.183z" />
+    </svg>
+);
+
+// File-type icons
+export const FilePdfIcon: React.FC<{ className?: string }> = (props) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM9.5 15.5H8V9.5h1.5v6zm2.5-3.25c0 .41-.34.75-.75.75s-.75-.34-.75-.75V11c0-.55.45-1 1-1h1.5v1.5h-1.25v1.25zm5-1.75h-1.5V9.5H17v6h-1.5v-2.5h-1.5v-1.5z"/></svg>
+);
+export const FileImageIcon: React.FC<{ className?: string }> = (props) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H7v-2l1.5-2 1 1 2-2.5L13 14v2zm4-2h-3l-2-2.5 1-1 1.5 2 3 4V14z"/></svg>
+);
+export const FileWordIcon: React.FC<{ className?: string }> = (props) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM9.5 15.5H8V9.5h1.5L11 13.5l1.5-4H14v6h-1.5v-4.25L11.75 13H10.5l-.75-1.75V15.5z"/></svg>
+);
+export const FileExcelIcon: React.FC<{ className?: string }> = (props) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM9.5 15.5H8V9.5h1.5v2.25l1-1L12 9.5h1.5v6h-1.5v-2.25l-1 1-1.5 1.25V15.5z"/></svg>
 );

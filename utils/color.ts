@@ -19,30 +19,38 @@ const tailwindColorMap: Record<string, { background: string; text: string }> = {
   'default': { background: 'bg-slate-100 dark:bg-slate-700', text: 'text-slate-800 dark:text-slate-200' },
 };
 
-const getCategoryByName = (categoryName: string | undefined | null, allCategories: Category[]): Category | undefined => {
-    if (!categoryName) return undefined;
-    return allCategories.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
+const getFirstCategory = (categoryNameOrNames: string | string[] | undefined | null, allCategories: Category[]): Category | undefined => {
+    if (!categoryNameOrNames) {
+        // Find the 'General' category as a fallback
+        return allCategories.find(c => c.name.toLowerCase() === 'general');
+    }
+    const firstName = Array.isArray(categoryNameOrNames) ? categoryNameOrNames[0] : categoryNameOrNames;
+    if (!firstName) {
+        return allCategories.find(c => c.name.toLowerCase() === 'general');
+    }
+    return allCategories.find(c => c.name.toLowerCase() === firstName.toLowerCase());
 };
+
 
 /**
  * Gets the Tailwind CSS color classes for a category.
- * @param categoryName The name of the category.
+ * @param categoryNameOrNames The name of the category or an array of names.
  * @param allCategories The list of all available Category objects.
  * @returns An object with Tailwind CSS classes for background and text color.
  */
-export const getCategoryColorClasses = (categoryName: string | undefined | null, allCategories: Category[]) => {
-    const category = getCategoryByName(categoryName, allCategories);
+export const getCategoryColorClasses = (categoryNameOrNames: string | string[] | undefined | null, allCategories: Category[]) => {
+    const category = getFirstCategory(categoryNameOrNames, allCategories);
     const colorHex = category?.color;
     return (colorHex && tailwindColorMap[colorHex]) ? tailwindColorMap[colorHex] : tailwindColorMap['default'];
 };
 
 /**
  * Gets the hex color for a category.
- * @param categoryName The name of the category.
+ * @param categoryNameOrNames The name of the category or an array of names.
  * @param allCategories The list of all available Category objects.
  * @returns A hex color code string.
  */
-export const getCategoryHexColor = (categoryName: string | undefined | null, allCategories: Category[]): string => {
-    const category = getCategoryByName(categoryName, allCategories);
+export const getCategoryHexColor = (categoryNameOrNames: string | string[] | undefined | null, allCategories: Category[]): string => {
+    const category = getFirstCategory(categoryNameOrNames, allCategories);
     return category?.color || '#64748b'; // slate-500 as fallback
 };

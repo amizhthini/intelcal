@@ -1,3 +1,4 @@
+
 import { CalendarEvent } from '../types';
 
 // The Gemini API key is used here for the discovery service.
@@ -68,6 +69,11 @@ export const addEventToGoogleCalendar = async (event: CalendarEvent): Promise<an
     throw new Error("User not authenticated with Google.");
   }
 
+  const reminderOverrides = (event.reminders || []).map(minutes => ({
+      method: 'popup',
+      minutes
+  }));
+
   const googleEvent = {
     'summary': event.title,
     'location': event.location || '',
@@ -83,11 +89,8 @@ export const addEventToGoogleCalendar = async (event: CalendarEvent): Promise<an
     'attendees': event.attendees?.map(email => ({ 'email': email })) || [],
     'reminders': {
       'useDefault': false,
-      'overrides': [
-        { 'method': 'popup', 'minutes': 12 * 60 },
-        { 'method': 'popup', 'minutes': 6 * 60 },
-        { 'method': 'popup', 'minutes': 120 },
-        { 'method': 'popup', 'minutes': 30 },
+      'overrides': reminderOverrides.length > 0 ? reminderOverrides : [
+        { 'method': 'popup', 'minutes': 30 }, // Default reminder if none are set
       ],
     },
   };

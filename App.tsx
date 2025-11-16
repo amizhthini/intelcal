@@ -1,11 +1,12 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { ExtractedData, CalendarEvent, View, ToastMessage, BookingSettings, Category } from './types';
+import { ExtractedData, CalendarEvent, View, ToastMessage, BookingSettings, Category, StoredDocument } from './types';
 import { extractInfo } from './services/geminiService';
 import useLocalStorage from './hooks/useLocalStorage';
 import useNotifications from './hooks/useNotifications';
 import { generateICS, generateInviteEmail } from './utils/calendar';
 import { addEventToGoogleCalendar } from './services/googleCalendarService';
+import { fileToBase64, base64ToFile } from './utils/fileUtils';
 import { DEFAULT_CATEGORIES, COLOR_PALETTE } from './utils/categories';
 
 import LoginScreen from './components/LoginScreen';
@@ -18,10 +19,11 @@ import DataStructuringView from './components/DataStructuringView';
 import NavigationBar from './components/NavigationBar';
 import Toast from './components/Toast';
 import GoogleClientIdModal from './components/GoogleClientIdModal';
+import BulkAddConfirmationModal from './components/BulkAddConfirmationModal';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true); // Default to true for development
-  const [currentView, setCurrentView] = useState<View>(View.DOCUMENTS);
+  const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
   
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
@@ -33,6 +35,10 @@ const App: React.FC = () => {
   const [isClientIdModalOpen, setIsClientIdModalOpen] = useState(false);
   
   const [allCategories, setAllCategories] = useLocalStorage<Category[]>('allCategories', DEFAULT_CATEGORIES);
+  const [storedDocuments, setStoredDocuments] = useLocalStorage<StoredDocument[]>('storedDocuments', []);
+
+  const [isBulkAddModalOpen, setIsBulkAddModalOpen] = useState(false);
+  const [bulkAddStats, setBulkAddStats] = useState({ added: 0, skipped: 0, remaining: 0 });
   
   const [bookingSettings, setBookingSettings] = useLocalStorage<BookingSettings>('bookingSettings', {
     availabilityRules: [],
@@ -72,6 +78,25 @@ const App: React.FC = () => {
 
 
   const handleExtract = useCallback(async (files: File[], text: string) => {
+    // Store uploaded files
+    for (const file of files) {
+        const fileContent = await fileToBase64(file);
+        const newDocument: StoredDocument = {
+            id: `${Date.now()}-${file.name}`,
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            content: fileContent,
+            uploadedAt: new Date().toISOString(),
+        };
+        setStoredDocuments(prev => {
+            if (prev.some(doc => doc.name === newDocument.name && doc.size === newDocument.size)) {
+                return prev;
+            }
+            return [newDocument, ...prev];
+        });
+    }
+
     const tasks: { file: File | null; text: string; sourceName: string }[] = [];
     files.forEach(file => tasks.push({ file, text: '', sourceName: file.name }));
     text.split('\n')
@@ -99,6 +124,7 @@ const App: React.FC = () => {
                 clientId: `${Date.now()}-${index}`,
                 source: task.sourceName,
                 attendees: [],
+                recurring: false,
             };
         });
         setExtractionResults(finalResults);
@@ -109,7 +135,19 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [showToast]);
+  }, [showToast, setStoredDocuments]);
+
+  const handleReExtract = useCallback((doc: StoredDocument) => {
+    const file = base64ToFile(doc.content, doc.name, doc.type);
+    handleExtract([file], '');
+  }, [handleExtract]);
+
+  const handleDeleteDocument = useCallback((docId: string) => {
+    if (window.confirm("Are you sure you want to delete this document?")) {
+        setStoredDocuments(prev => prev.filter(doc => doc.id !== docId));
+        showToast("Document deleted.", "success");
+    }
+  }, [setStoredDocuments, showToast]);
   
   const handleSaveEvent = (eventData: CalendarEvent) => {
     const isNewEvent = !eventData.id;
@@ -145,35 +183,64 @@ const App: React.FC = () => {
         end: new Date(slot.getTime() + bookingSettings.appointmentDuration * 60 * 1000).toISOString(),
         attendees: [bookerEmail],
         summary: `Meeting booked via IntelliCal with ${bookerName} (${bookerEmail}).`,
-        category: 'Meeting',
+        category: ['Meeting'],
+        reminders: [30, 120], // Default 30 min and 2 hour reminders
+        isAllDay: false,
     };
     setEvents(prev => [...prev, newBooking]);
     showToast(`Appointment with ${bookerName} booked successfully!`, 'success');
   }, [bookingSettings.appointmentDuration, setEvents, showToast]);
 
   const extractedDataToCalendarEvent = (data: ExtractedData): CalendarEvent | null => {
-      if (!data.deadline || !data.title) {
+      if (!data.end || !data.title) {
         return null;
       }
-      let deadlineISO = data.deadline;
-      if (deadlineISO && (deadlineISO.length <= 10 || !deadlineISO.includes('T'))) {
-          deadlineISO = `${deadlineISO.split('T')[0]}T23:59:59`; 
-      }
-      const deadline = new Date(deadlineISO);
-      if (isNaN(deadline.getTime())) {
+      
+      const isEndAllDay = data.end.length <= 10;
+      const endDate = new Date(isEndAllDay ? `${data.end}T23:59:59` : data.end);
+      if (isNaN(endDate.getTime())) {
           return null;
       }
+      
+      let startDate: Date;
+      let isAllDay = false;
+
+      if (data.start) {
+        const parsedStart = new Date(data.start.length <= 10 ? `${data.start}T00:00:00` : data.start);
+        if (!isNaN(parsedStart.getTime())) {
+            startDate = parsedStart;
+            // An event is all-day only if both start and end are just dates without times
+            isAllDay = data.start.length <= 10 && isEndAllDay;
+        } else {
+          // Fallback if start date is invalid, default to 1 hour before end
+          startDate = new Date(endDate.getTime() - 60 * 60 * 1000);
+        }
+      } else {
+        // No start date provided, it's a deadline or single-day event
+        isAllDay = isEndAllDay;
+        if (isAllDay) {
+            startDate = new Date(endDate);
+            startDate.setHours(0,0,0,0);
+        } else {
+            // Default duration of 1 hour for timed deadlines
+            startDate = new Date(endDate.getTime() - 60 * 60 * 1000);
+        }
+      }
+
       return {
         id: '', 
         title: data.title,
-        start: deadline.toISOString(),
-        end: new Date(deadline.getTime() + 60 * 60 * 1000).toISOString(),
+        start: startDate.toISOString(),
+        end: endDate.toISOString(),
+        isAllDay,
         summary: data.summary || '',
         location: data.location || '',
         eligibility: data.eligibility || '',
         source: data.source || undefined,
         attendees: data.attendees || [],
-        category: data.category || 'General',
+        category: data.category && data.category.length > 0 ? data.category : ['General'],
+        reminders: [30], // Default 30 minute reminder
+        recurring: data.recurring ? 'annually' : undefined,
       };
   }
 
@@ -201,26 +268,29 @@ const App: React.FC = () => {
         setEvents(prev => [...prev, ...newEvents]);
     }
     
-    if (addedCount > 0 && skippedCount > 0) {
-        showToast(`${addedCount} event(s) added. ${skippedCount} duplicate(s) skipped.`, 'success');
-    } else if (addedCount > 0) {
-        showToast(`${addedCount} event(s) added to calendar!`, 'success');
-    } else if (skippedCount > 0) {
-        showToast(`No events added. ${skippedCount} duplicate(s) found.`, 'error');
-    } else {
-        showToast("No valid events could be added.", 'error');
-    }
+    const processedClientIds = new Set(dataItems.map(item => item.clientId!));
+    const remainingResults = extractionResults.filter(r => !processedClientIds.has(r.clientId!));
+    setExtractionResults(remainingResults);
 
-    if (addedCount > 0) {
-        setExtractionResults([]);
-        setCurrentView(View.CALENDAR);
-    }
-  }, [events, setEvents, showToast]);
+    setBulkAddStats({
+        added: addedCount,
+        skipped: skippedCount,
+        remaining: remainingResults.length
+    });
+    setIsBulkAddModalOpen(true);
+
+  }, [events, setEvents, extractionResults]);
+
+  const handleNavigateAndClear = () => {
+    setExtractionResults([]);
+    setCurrentView(View.CALENDAR);
+    setIsBulkAddModalOpen(false);
+  };
 
 
   const addEventToCalendar = useCallback((data: ExtractedData) => {
     const newEvent = extractedDataToCalendarEvent(data);
-    if(newEvent) {
+    if (newEvent) {
         const isDuplicate = events.some(
             e => e.title === newEvent.title && e.start === newEvent.start
         );
@@ -228,11 +298,12 @@ const App: React.FC = () => {
             showToast("This event already exists in your calendar.", 'error');
             return;
         }
+        // Save event, which will assign an ID and show a success toast.
         handleSaveEvent(newEvent);
-        setExtractionResults([]); // Auto-clear results
-        setCurrentView(View.CALENDAR);
+        // Remove just the added event from the results list.
+        setExtractionResults(prev => prev.filter(r => r.clientId !== data.clientId));
     } else {
-        showToast("Cannot add to calendar. Title and deadline are required.", 'error');
+        showToast("Cannot add to calendar. Title and end date are required.", 'error');
     }
   }, [events, showToast, handleSaveEvent]);
 
@@ -264,22 +335,16 @@ const App: React.FC = () => {
 
     showToast('Adding to Google Calendar...', 'success');
     try {
-        const deadlineISO = (eventData as ExtractedData).deadline || (eventData as CalendarEvent).start;
-        if (!deadlineISO) throw new Error("Event has no date.");
+        let event: CalendarEvent;
+        if ('clientId' in eventData || 'source' in eventData) { // It's ExtractedData
+            const potentialEvent = extractedDataToCalendarEvent(eventData as ExtractedData);
+            if (!potentialEvent) throw new Error("Could not convert data to a valid event.");
+            event = potentialEvent;
+        } else {
+            event = eventData as CalendarEvent;
+        }
         
-        const deadline = new Date(deadlineISO.length === 10 ? `${deadlineISO}T23:59:59` : deadlineISO);
-        
-        const event: CalendarEvent = {
-            id: (eventData as CalendarEvent).id || Date.now().toString(),
-            title: eventData.title || 'Untitled Event',
-            start: deadline.toISOString(),
-            end: new Date(deadline.getTime() + 60 * 60 * 1000).toISOString(),
-            summary: eventData.summary || '',
-            location: eventData.location || '',
-            eligibility: eventData.eligibility || '',
-            attendees: eventData.attendees || [],
-            category: eventData.category || 'General',
-        };
+        event.id = event.id || Date.now().toString();
       
         const googleEvent = await addEventToGoogleCalendar(event);
         showToast('Event added to Google Calendar!', 'success');
@@ -331,6 +396,50 @@ const App: React.FC = () => {
         setExtractionResults([]); // Auto-clear results
       }
   }
+
+  const handleAddCategory = useCallback((newCategory: Category) => {
+    if (allCategories.some(c => c.name.toLowerCase() === newCategory.name.toLowerCase())) {
+        showToast(`Category '${newCategory.name}' already exists.`, 'error');
+        return;
+    }
+    setAllCategories(prev => [...prev, newCategory]);
+    showToast('Category added!', 'success');
+  }, [allCategories, setAllCategories, showToast]);
+
+  const handleUpdateCategory = useCallback((oldName: string, newCategory: Category) => {
+    if (oldName.toLowerCase() !== newCategory.name.toLowerCase() && allCategories.some(c => c.name.toLowerCase() === newCategory.name.toLowerCase())) {
+        showToast(`Category name '${newCategory.name}' is already in use.`, 'error');
+        return;
+    }
+    setAllCategories(prev => prev.map(c => c.name.toLowerCase() === oldName.toLowerCase() ? newCategory : c));
+    setEvents(prev => prev.map(e => {
+        if (e.category?.some(c => c.toLowerCase() === oldName.toLowerCase())) {
+            return {
+                ...e,
+                category: e.category.map(c => c.toLowerCase() === oldName.toLowerCase() ? newCategory.name : c)
+            };
+        }
+        return e;
+    }));
+    showToast('Category updated!', 'success');
+  }, [allCategories, setAllCategories, setEvents, showToast]);
+
+  const handleDeleteCategory = useCallback((nameToDelete: string) => {
+    const isDefault = DEFAULT_CATEGORIES.some(c => c.name.toLowerCase() === nameToDelete.toLowerCase());
+    if (isDefault) {
+        showToast(`Cannot delete the default category '${nameToDelete}'.`, 'error');
+        return;
+    }
+    setAllCategories(prev => prev.filter(c => c.name.toLowerCase() !== nameToDelete.toLowerCase()));
+    setEvents(prev => prev.map(e => {
+        if (e.category?.some(c => c.toLowerCase() === nameToDelete.toLowerCase())) {
+            const newCategories = e.category.filter(c => c.toLowerCase() !== nameToDelete.toLowerCase());
+            return { ...e, category: newCategories.length > 0 ? newCategories : ['General'] };
+        }
+        return e;
+    }));
+    showToast(`Category '${nameToDelete}' deleted. Associated events moved to 'General'.`, 'success');
+  }, [setAllCategories, setEvents, showToast]);
   
   const handleLoginSuccess = () => {
     setIsAuthenticated(true);
@@ -365,7 +474,7 @@ const App: React.FC = () => {
         onConfigureGoogle={() => setIsClientIdModalOpen(true)}
       />
       <main className="p-4 mx-auto max-w-4xl pb-24">
-        {currentView === View.DASHBOARD && <DashboardView events={events} />}
+        {currentView === View.DASHBOARD && <DashboardView events={events} allCategories={allCategories} />}
         {currentView === View.DOCUMENTS && (
           <DocumentsView
             onExtract={handleExtract}
@@ -378,7 +487,11 @@ const App: React.FC = () => {
             onAddToGoogleCalendar={handleAddToGoogleCalendar}
             onBulkAddToGoogleCalendar={handleBulkAddToGoogleCalendar}
             allCategories={allCategories}
-            setAllCategories={setAllCategories}
+            onAddCategory={handleAddCategory}
+            onUpdateCategory={handleUpdateCategory}
+            storedDocuments={storedDocuments}
+            onDeleteDocument={handleDeleteDocument}
+            onReExtract={handleReExtract}
           />
         )}
         {currentView === View.CALENDAR && 
@@ -390,7 +503,9 @@ const App: React.FC = () => {
                 onAddToGoogleCalendar={handleAddToGoogleCalendar}
                 onSaveEvent={handleSaveEvent}
                 allCategories={allCategories}
-                setAllCategories={setAllCategories}
+                onAddCategory={handleAddCategory}
+                onUpdateCategory={handleUpdateCategory}
+                onDeleteCategory={handleDeleteCategory}
             />
         }
         {currentView === View.BOOKING &&
@@ -406,6 +521,14 @@ const App: React.FC = () => {
             <DataStructuringView showToast={showToast} />
         }
       </main>
+      {isBulkAddModalOpen && (
+        <BulkAddConfirmationModal
+            isOpen={isBulkAddModalOpen}
+            onClose={() => setIsBulkAddModalOpen(false)}
+            onNavigate={handleNavigateAndClear}
+            stats={bulkAddStats}
+        />
+      )}
       <NavigationBar currentView={currentView} setCurrentView={setCurrentView} />
     </div>
   );

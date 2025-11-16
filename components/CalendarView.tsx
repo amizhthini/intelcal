@@ -2,7 +2,8 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { CalendarEvent, Category } from '../types';
 import EventModal from './EventModal';
-import { PlusIcon, ChevronLeftIcon, ChevronRightIcon } from './Icons';
+import CategoryManagerModal from './CategoryManagerModal';
+import { PlusIcon, ChevronLeftIcon, ChevronRightIcon, TagIcon } from './Icons';
 import { getCategoryHexColor } from '../utils/color';
 
 interface CalendarViewProps {
@@ -13,7 +14,9 @@ interface CalendarViewProps {
   onAddToGoogleCalendar: (event: CalendarEvent) => Promise<void>;
   onSaveEvent: (event: CalendarEvent) => void;
   allCategories: Category[];
-  setAllCategories: React.Dispatch<React.SetStateAction<Category[]>>;
+  onAddCategory: (category: Category) => void;
+  onUpdateCategory: (oldName: string, category: Category) => void;
+  onDeleteCategory: (name: string) => void;
 }
 
 type CalendarDisplayMode = 'month' | 'week' | 'day';
@@ -26,32 +29,39 @@ const toLocalDateKey = (date: Date): string => {
 };
 
 const CalendarView: React.FC<CalendarViewProps> = (props) => {
-  const { events, setEvents, showToast, isGoogleCalendarConnected, onAddToGoogleCalendar, onSaveEvent, allCategories, setAllCategories } = props;
+  const { events, setEvents, showToast, isGoogleCalendarConnected, onAddToGoogleCalendar, onSaveEvent, allCategories, onAddCategory, onUpdateCategory, onDeleteCategory } = props;
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEventModalOpen, setIsEventModalOpen] = useState(false);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [viewMode, setViewMode] = useState<CalendarDisplayMode>('month');
 
   // --- Modal Handlers ---
   const openModalForNew = (date: Date = new Date()) => {
+    const start = new Date(date);
+    start.setHours(new Date().getHours() + 1, 0, 0, 0); // Default to next hour
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+
     setSelectedEvent({
       id: '', // Empty ID indicates a new event
       title: '',
-      start: date.toISOString(),
-      end: new Date(date.getTime() + 60 * 60 * 1000).toISOString(),
+      start: start.toISOString(),
+      end: end.toISOString(),
+      isAllDay: false,
       attendees: [],
-      category: 'General',
+      category: ['General'],
+      reminders: [],
     });
-    setIsModalOpen(true);
+    setIsEventModalOpen(true);
   };
   
   const openModalForEdit = (event: CalendarEvent) => {
     setSelectedEvent(event);
-    setIsModalOpen(true);
+    setIsEventModalOpen(true);
   };
   
   const closeModal = () => {
-    setIsModalOpen(false);
+    setIsEventModalOpen(false);
     setSelectedEvent(null);
   };
 
@@ -139,7 +149,7 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
         <div className="grid grid-cols-7 gap-1">
             {days.map(d => {
             const dateKey = toLocalDateKey(d);
-            const dayEvents = eventsByDate.get(dateKey) || [];
+            const dayEvents = (eventsByDate.get(dateKey) || []).sort((a,b) => (a.isAllDay ? -1 : 1));
             const isToday = d.toDateString() === new Date().toDateString();
             const isCurrentMonth = d.getMonth() === currentDate.getMonth();
             return (
@@ -153,11 +163,15 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
                 </time>
                 <div className="mt-1 space-y-1 overflow-y-auto max-h-full">
                     {dayEvents.slice(0, 2).map(event => (
+                    // FIX: Merged duplicate style attributes into a single style object.
                     <div 
                         key={event.id} 
                         onClick={(e) => { e.stopPropagation(); openModalForEdit(event); }} 
-                        className="bg-slate-100 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 text-[10px] sm:text-xs font-medium p-1 rounded truncate cursor-pointer hover:opacity-80 border-l-4"
-                        style={{ borderLeftColor: getCategoryHexColor(event.category, allCategories) }}
+                        className={`text-slate-800 dark:text-slate-200 text-[10px] sm:text-xs font-medium p-1 rounded truncate cursor-pointer hover:opacity-80 ${event.isAllDay ? '' : 'bg-slate-100 dark:bg-slate-900/50 border-l-4'}`}
+                        style={{ 
+                            backgroundColor: event.isAllDay ? getCategoryHexColor(event.category, allCategories) + '40' : undefined,
+                            borderLeftColor: event.isAllDay ? 'transparent' : getCategoryHexColor(event.category, allCategories)
+                        }}
                     >
                         {event.title}
                     </div>
@@ -170,17 +184,21 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
         </div>
         </>
     );
-  }, [currentDate, events, allCategories]);
+  }, [currentDate, events, allCategories, openModalForNew]);
 
   const renderTimeGridView = useCallback((days: Date[]) => {
     const hours = Array.from({ length: 24 }, (_, i) => i);
     
-    const eventsByDay: { [key: string]: CalendarEvent[] } = {};
+    const allDayEventsByDay: { [key: string]: CalendarEvent[] } = {};
+    const timedEventsByDay: { [key: string]: CalendarEvent[] } = {};
+
     days.forEach(day => {
         const dateKey = toLocalDateKey(day);
-        eventsByDay[dateKey] = events
+        const dayEvents = events
             .filter(e => toLocalDateKey(new Date(e.start)) === dateKey)
             .sort((a,b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+        allDayEventsByDay[dateKey] = dayEvents.filter(e => e.isAllDay);
+        timedEventsByDay[dateKey] = dayEvents.filter(e => !e.isAllDay);
     });
 
     return (
@@ -194,6 +212,29 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
                     </div>
                 ))}
             </div>
+            {/* All Day Events Row */}
+            <div className="flex border-b border-slate-200 dark:border-slate-700">
+                <div className="w-14 shrink-0 text-xs text-slate-500 dark:text-slate-400 flex items-center justify-center"></div>
+                {days.map(day => {
+                    const dateKey = toLocalDateKey(day);
+                    const dayAllDayEvents = allDayEventsByDay[dateKey] || [];
+                    return (
+                        <div key={day.toISOString()} className="flex-1 p-1 border-r border-slate-200 dark:border-slate-700 min-h-[28px]">
+                            {dayAllDayEvents.map(event => (
+                                <div
+                                    key={event.id}
+                                    onClick={() => openModalForEdit(event)}
+                                    className="p-1 rounded text-white text-xs overflow-hidden cursor-pointer mb-1"
+                                    style={{ backgroundColor: getCategoryHexColor(event.category, allCategories) }}
+                                >
+                                    <p className="font-semibold truncate">{event.title}</p>
+                                </div>
+                            ))}
+                        </div>
+                    );
+                })}
+            </div>
+
             <div className="flex overflow-y-auto" style={{ maxHeight: '60vh' }}>
                 <div className="w-14 shrink-0 text-right">
                     {hours.map(hour => (
@@ -204,17 +245,17 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
                 </div>
                 {days.map(day => {
                     const dateKey = toLocalDateKey(day);
-                    const dayEvents = eventsByDay[dateKey] || [];
+                    const dayTimedEvents = timedEventsByDay[dateKey] || [];
                     return (
                         <div key={day.toISOString()} className="flex-1 border-r border-slate-200 dark:border-slate-700 relative">
                             {hours.map(hour => (
                                 <div key={hour} className="h-12 border-t border-slate-200 dark:border-slate-700"></div>
                             ))}
-                            {dayEvents.map(event => {
+                            {dayTimedEvents.map(event => {
                                 const start = new Date(event.start);
                                 const end = new Date(event.end);
                                 const top = (start.getHours() * 60 + start.getMinutes()) / (24*60) * 100;
-                                const duration = (end.getTime() - start.getTime()) / (1000 * 60);
+                                const duration = Math.max(30, (end.getTime() - start.getTime()) / (1000 * 60)); // Min 30min height
                                 const height = duration / (24*60) * 100;
                                 return (
                                     <div
@@ -269,6 +310,9 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
                 <button onClick={() => setViewMode('week')} className={`px-3 py-1 rounded-md transition-all ${viewMode === 'week' ? 'bg-white dark:bg-slate-800 shadow' : ''}`}>Week</button>
                 <button onClick={() => setViewMode('day')} className={`px-3 py-1 rounded-md transition-all ${viewMode === 'day' ? 'bg-white dark:bg-slate-800 shadow' : ''}`}>Day</button>
             </div>
+            <button onClick={() => setIsCategoryModalOpen(true)} title="Manage Categories" className="flex items-center gap-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold py-2 px-3 rounded-lg shadow-sm hover:bg-slate-300 dark:hover:bg-slate-600 transition-all">
+                <TagIcon className="w-5 h-5" />
+            </button>
             <button onClick={() => openModalForNew()} className="flex items-center gap-2 bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg shadow-sm hover:bg-indigo-700 transition-all">
                 <PlusIcon className="w-5 h-5" />
                 <span className="hidden sm:inline">New Event</span>
@@ -280,7 +324,7 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
       {viewMode === 'week' && renderWeekView()}
       {viewMode === 'day' && renderDayView()}
 
-      {isModalOpen && (
+      {isEventModalOpen && (
         <EventModal
           event={selectedEvent}
           onClose={closeModal}
@@ -290,7 +334,18 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
           isGoogleCalendarConnected={isGoogleCalendarConnected}
           onAddToGoogleCalendar={onAddToGoogleCalendar}
           allCategories={allCategories}
-          setAllCategories={setAllCategories}
+          onAddCategory={onAddCategory}
+          onUpdateCategory={onUpdateCategory}
+        />
+      )}
+      {isCategoryModalOpen && (
+        <CategoryManagerModal
+            isOpen={isCategoryModalOpen}
+            onClose={() => setIsCategoryModalOpen(false)}
+            allCategories={allCategories}
+            onAddCategory={onAddCategory}
+            onUpdateCategory={onUpdateCategory}
+            onDeleteCategory={onDeleteCategory}
         />
       )}
     </div>

@@ -5,7 +5,7 @@ import { ExtractedData } from '../types';
 declare var XLSX: any; // From the script tag in index.html
 declare var mammoth: any; // From the script tag in index.html
 
-type ExtractedDataResult = Omit<ExtractedData, 'source'> & { originalSource?: string };
+type ExtractedDataResult = Omit<ExtractedData, 'source' | 'recurring'> & { originalSource?: string };
 
 
 const getDeadlineFallback = (): string => {
@@ -61,13 +61,14 @@ const extractFromSheet = async (file: File): Promise<ExtractedDataResult[]> => {
         - title: The main title or name of the event/task.
         - summary: A brief description. If not available, use the title.
         - location: The location, if any.
-        - deadline: The deadline for the task.
-        - category: A relevant category like "Business", "Personal", "Competition", "Grant", "Meeting", etc. Choose the most fitting one.
+        - start: The optional start date and time.
+        - end: The end date and time or deadline.
+        - category: An array of relevant categories like "Business", "Personal", "Competition", "Grant", "Meeting", etc. Choose the most fitting ones.
         
         IMPORTANT RULES:
         1. The output MUST be a valid JSON array. Each element in the array is an object representing one row of the spreadsheet.
-        2. If a 'deadline' column is missing or a row has no value for it, you MUST create a valid deadline. Default to today's date at 23:59:59 if no other information can be inferred. Today is ${new Date().toISOString()}.
-        3. Format all deadlines as YYYY-MM-DDTHH:MM:SS.
+        2. If an 'end' date column is missing or a row has no value for it, you MUST create a valid end date. Default to today's date at 23:59:59 if no other information can be inferred. Today is ${new Date().toISOString()}.
+        3. Format all dates and times as YYYY-MM-DDTHH:MM:SS.
         4. If the spreadsheet is empty or contains no useful data, return an empty array [].
     `;
 
@@ -85,8 +86,9 @@ const extractFromSheet = async (file: File): Promise<ExtractedDataResult[]> => {
                     summary: { type: Type.STRING, description: 'A brief summary.' },
                     eligibility: { type: Type.STRING, description: 'Eligibility criteria.' },
                     location: { type: Type.STRING, description: 'The location.' },
-                    deadline: { type: Type.STRING, description: 'The deadline in YYYY-MM-DDTHH:MM:SS format.' },
-                    category: { type: Type.STRING, description: 'A relevant category for the event.' },
+                    start: { type: Type.STRING, description: 'The optional start date/time in YYYY-MM-DDTHH:MM:SS format.' },
+                    end: { type: Type.STRING, description: 'The end date/time in YYYY-MM-DDTHH:MM:SS format.' },
+                    category: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'An array of relevant categories for the event.' },
                 }
             }
           },
@@ -99,7 +101,7 @@ const extractFromSheet = async (file: File): Promise<ExtractedDataResult[]> => {
         if (Array.isArray(parsedData)) {
             return parsedData.map(item => ({ 
                 ...item,
-                deadline: item.deadline || getDeadlineFallback(),
+                end: item.end || getDeadlineFallback(),
                 originalSource: file.name
             }));
         }
@@ -158,8 +160,9 @@ export const extractInfo = async (file: File | null, text: string): Promise<Extr
     - Summary: A brief one or two-sentence summary of the description.
     - Eligibility Criteria: Any requirements or criteria for participation.
     - Location: The physical or virtual location.
-    - Deadline: The absolute final date and time for submission or attendance. Extract it in YYYY-MM-DDTHH:MM:SS format. Today is ${new Date().toLocaleDateString('en-CA')}. If no time is mentioned, use 23:59:59. If only a date is available, return it as YYYY-MM-DD. If no date is available at all, return null.
-    - Category: Classify the item into a relevant category such as "Business", "Personal", "Competition", "Grant", "Meeting", or "Deadline". Choose the most fitting one.
+    - Start Date & Time: The optional start date and time. If not available, return null. Extract it in YYYY-MM-DDTHH:MM:SS format if time is present, otherwise YYYY-MM-DD.
+    - End Date & Time: The end date, deadline, or event time. This is the primary date field. Extract it in YYYY-MM-DDTHH:MM:SS format if time is present, otherwise YYYY-MM-DD. If no date is available at all, return null. Today is ${new Date().toLocaleDateString('en-CA')}. If no time is mentioned, use 23:59:59.
+    - Category: Classify the item into one or more relevant categories such as "Business", "Personal", "Competition", "Grant", "Meeting", or "Deadline". Return an array of strings. If none apply, return ["General"].
   `;
   
   const parts: any[] = [{ text: prompt }];
@@ -182,8 +185,9 @@ export const extractInfo = async (file: File | null, text: string): Promise<Extr
           summary: { type: Type.STRING, description: 'A brief summary.' },
           eligibility: { type: Type.STRING, description: 'Eligibility criteria.' },
           location: { type: Type.STRING, description: 'The location.' },
-          deadline: { type: Type.STRING, description: 'The deadline in YYYY-MM-DDTHH:MM:SS or YYYY-MM-DD format.' },
-          category: { type: Type.STRING, description: 'A relevant category for the event.' },
+          start: { type: Type.STRING, description: 'The optional start date/time in YYYY-MM-DDTHH:MM:SS or YYYY-MM-DD format.' },
+          end: { type: Type.STRING, description: 'The end date/time (deadline) in YYYY-MM-DDTHH:MM:SS or YYYY-MM-DD format.' },
+          category: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'An array of relevant categories for the event.' },
         },
       },
     },
@@ -193,8 +197,8 @@ export const extractInfo = async (file: File | null, text: string): Promise<Extr
     const jsonString = response.text.trim();
     const parsedData = JSON.parse(jsonString) as ExtractedDataResult;
     
-    if (!parsedData.deadline) {
-        parsedData.deadline = getDeadlineFallback();
+    if (!parsedData.end) {
+        parsedData.end = getDeadlineFallback();
     }
     
     return [{ ...parsedData, originalSource: originalSourceName }];
@@ -209,7 +213,7 @@ export const structureDataFromTemplate = async (templateFile: File, dataFile: Fi
     throw new Error("API_KEY environment variable is not set.");
   }
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const model = "gemini-2.5-pro"; // Use Pro for better structural understanding
+  const model = "gemini-2.5-pro"; // Use for better structural understanding
 
   const templatePart = await convertFileToTextOrGenerativePart(templateFile);
   const dataPart = await convertFileToTextOrGenerativePart(dataFile);

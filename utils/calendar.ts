@@ -1,3 +1,4 @@
+
 import { CalendarEvent } from '../types';
 
 // Function to format date for ICS file (YYYYMMDDTHHMMSSZ)
@@ -22,6 +23,21 @@ export const generateICS = (event: CalendarEvent) => {
     `ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=${email};X-NUM-GUESTS=0:mailto:${email}`
   ).join('\r\n') || '';
 
+  const remindersICS = (event.reminders && event.reminders.length > 0)
+    ? event.reminders.map(minutes => `
+BEGIN:VALARM
+TRIGGER:-PT${minutes}M
+ACTION:DISPLAY
+DESCRIPTION:Reminder
+END:VALARM`).join('')
+    : `
+BEGIN:VALARM
+TRIGGER:-PT30M
+ACTION:DISPLAY
+DESCRIPTION:Reminder
+END:VALARM`;
+
+
   const icsContent = `
 BEGIN:VCALENDAR
 VERSION:2.0
@@ -34,27 +50,7 @@ DTEND:${toICSDate(endDate)}
 SUMMARY:${event.title}
 DESCRIPTION:${description}
 LOCATION:${event.location || ''}
-${attendeesICS}
-BEGIN:VALARM
-TRIGGER:-PT30M
-ACTION:DISPLAY
-DESCRIPTION:Reminder
-END:VALARM
-BEGIN:VALARM
-TRIGGER:-PT2H
-ACTION:DISPLAY
-DESCRIPTION:Reminder
-END:VALARM
-BEGIN:VALARM
-TRIGGER:-PT6H
-ACTION:DISPLAY
-DESCRIPTION:Reminder
-END:VALARM
-BEGIN:VALARM
-TRIGGER:-PT12H
-ACTION:DISPLAY
-DESCRIPTION:Reminder
-END:VALARM
+${attendeesICS}${remindersICS}
 END:VEVENT
 END:VCALENDAR
   `.trim().replace(/\n/g, '\r\n');

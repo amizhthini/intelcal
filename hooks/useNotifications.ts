@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from 'react';
 import { CalendarEvent, Notification } from '../types';
 import useLocalStorage from './useLocalStorage';
@@ -17,29 +18,64 @@ const useNotifications = (events: CalendarEvent[]) => {
     const checkNotifications = () => {
       const now = new Date();
       
-      // Check for deadline reminders
       events.forEach(event => {
-        const eventDate = new Date(event.start);
-        const diffMinutes = (eventDate.getTime() - now.getTime()) / (1000 * 60);
+        if (!event.reminders || event.reminders.length === 0) {
+          return; // Skip events without reminders
+        }
+        
+        const createReminderNotification = (
+            targetDate: Date,
+            reminderMinutes: number,
+            isAnnual: boolean
+        ) => {
+            const diffMinutes = (targetDate.getTime() - now.getTime()) / (1000 * 60);
+            
+            const yearOfTarget = targetDate.getFullYear();
+            const reminderKey = isAnnual 
+                ? `${reminderMinutes}m-annual-${yearOfTarget}`
+                : `${reminderMinutes}m-onetime`;
 
-        const reminderIntervals = {
-            '30m': 30,
-            '2h': 120,
-            '6h': 360,
-            '12h': 720
+            const alreadyNotified = notifiedEventIds[event.id]?.includes(reminderKey);
+
+            if (diffMinutes > 0 && diffMinutes <= reminderMinutes && !alreadyNotified) {
+                let timeLabel = '';
+                if (reminderMinutes < 60) {
+                    timeLabel = `${reminderMinutes} minutes`;
+                } else {
+                    const hours = reminderMinutes / 60;
+                    timeLabel = `${hours} hour${hours > 1 ? 's' : ''}`;
+                }
+
+                addNotification({
+                    eventId: event.id,
+                    message: isAnnual
+                        ? `Annual Reminder: "${event.title}" is in less than ${timeLabel} on ${targetDate.toLocaleDateString()}.`
+                        : `Reminder: "${event.title}" is in less than ${timeLabel}.`
+                });
+                
+                setNotifiedEventIds(prev => ({
+                    ...prev,
+                    [event.id]: [...(prev[event.id] || []), reminderKey]
+                }));
+            }
         };
 
-        for (const [key, minutes] of Object.entries(reminderIntervals)) {
-            if (diffMinutes > 0 && diffMinutes <= minutes) {
-                const alreadyNotified = notifiedEventIds[event.id]?.includes(key);
-                if (!alreadyNotified) {
-                    addNotification({ eventId: event.id, message: `Reminder: "${event.title}" is due in less than ${key === '30m' ? '30 minutes' : `${minutes/60} hours`}.` });
-                    setNotifiedEventIds(prev => ({
-                        ...prev,
-                        [event.id]: [...(prev[event.id] || []), key]
-                    }));
-                }
+        if (event.recurring === 'annually') {
+            const anniversaryDate = new Date(event.start);
+            anniversaryDate.setFullYear(now.getFullYear());
+
+            if (anniversaryDate < now) {
+                anniversaryDate.setFullYear(now.getFullYear() + 1);
             }
+            
+            event.reminders.forEach(reminderMinutes => {
+                createReminderNotification(anniversaryDate, reminderMinutes, true);
+            });
+        } else {
+            const eventDate = new Date(event.start);
+            event.reminders.forEach(reminderMinutes => {
+                createReminderNotification(eventDate, reminderMinutes, false);
+            });
         }
       });
       
@@ -71,6 +107,7 @@ const useNotifications = (events: CalendarEvent[]) => {
     };
 
     const intervalId = setInterval(checkNotifications, 60 * 1000); // Check every minute
+    checkNotifications(); // Run once on startup
     return () => clearInterval(intervalId);
   }, [events, addNotification, notifiedEventIds, setNotifiedEventIds]);
 

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { CalendarEvent, Category } from '../types';
 import { TrashIcon, GoogleIcon } from './Icons';
 import AttendeesInput from './AttendeesInput';
@@ -15,23 +15,45 @@ interface EventModalProps {
   isGoogleCalendarConnected: boolean;
   onAddToGoogleCalendar: (event: CalendarEvent) => Promise<void>;
   allCategories: Category[];
-  setAllCategories: React.Dispatch<React.SetStateAction<Category[]>>;
+  onAddCategory: (category: Category) => void;
+  onUpdateCategory: (oldName: string, category: Category) => void;
 }
 
+const REMINDER_OPTIONS = [
+    { value: 30, label: '30 minutes before' },
+    { value: 120, label: '2 hours before' },
+    { value: 360, label: '6 hours before' },
+    { value: 720, label: '12 hours before' },
+];
+
 const EventModal: React.FC<EventModalProps> = (props) => {
-  const { event, onClose, onSave, onDelete, showToast, isGoogleCalendarConnected, onAddToGoogleCalendar, allCategories, setAllCategories } = props;
+  const { event, onClose, onSave, onDelete, showToast, isGoogleCalendarConnected, onAddToGoogleCalendar, allCategories, onAddCategory } = props;
 
   const [title, setTitle] = useState('');
+  const [isAllDay, setIsAllDay] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [startTime, setStartTime] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [endTime, setEndTime] = useState('');
   const [summary, setSummary] = useState('');
   const [location, setLocation] = useState('');
   const [eligibility, setEligibility] = useState('');
   const [source, setSource] = useState('');
-  const [category, setCategory] = useState<string>('General');
+  const [category, setCategory] = useState<string[]>(['General']);
   const [attendees, setAttendees] = useState<string[]>([]);
+  const [reminders, setReminders] = useState<number[]>([]);
+  const [recurring, setRecurring] = useState<'annually' | undefined>();
   
   const [fullEvent, setFullEvent] = useState<CalendarEvent | null>(event);
+
+  const formatToInput = (date: Date) => {
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return { date: `${year}-${month}-${day}`, time: `${hours}:${minutes}` };
+  };
 
   useEffect(() => {
     if (event) {
@@ -42,60 +64,102 @@ const EventModal: React.FC<EventModalProps> = (props) => {
       setLocation(event.location || '');
       setEligibility(event.eligibility || '');
       setSource(event.source || 'Manually Added');
-      setCategory(event.category || 'General');
+      setCategory(event.category || ['General']);
+      setReminders(event.reminders || []);
+      setRecurring(event.recurring);
+      setIsAllDay(event.isAllDay || false);
       
       const start = new Date(event.start);
-      
-      const year = start.getFullYear();
-      const month = (start.getMonth() + 1).toString().padStart(2, '0');
-      const day = start.getDate().toString().padStart(2, '0');
-      const hours = start.getHours().toString().padStart(2, '0');
-      const minutes = start.getMinutes().toString().padStart(2, '0');
+      const end = new Date(event.end);
 
-      setStartDate(`${year}-${month}-${day}`);
-      setStartTime(`${hours}:${minutes}`);
+      const { date: startDateStr, time: startTimeStr } = formatToInput(start);
+      const { date: endDateStr, time: endTimeStr } = formatToInput(end);
+
+      setStartDate(startDateStr);
+      setStartTime(startTimeStr);
+      setEndDate(endDateStr);
+      setEndTime(endTimeStr);
     }
   }, [event]);
 
-  const handleCategoryChange = (categoryName: string, isNew: boolean = false) => {
-    setCategory(categoryName);
-    if (isNew) {
-        const newCategory: Category = {
-            name: categoryName,
-            color: COLOR_PALETTE[Math.floor(Math.random() * COLOR_PALETTE.length)],
-        };
-        setAllCategories(prev => [...prev, newCategory]);
+  const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newStartDate = e.target.value;
+    setStartDate(newStartDate);
+    if (newStartDate > endDate) {
+        setEndDate(newStartDate);
+    }
+  };
+
+  const handleStartTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newStartTime = e.target.value;
+    setStartTime(newStartTime);
+    const startDateTime = new Date(`${startDate}T${newStartTime}`);
+    const endDateTime = new Date(startDateTime.getTime() + 60 * 60 * 1000); // Default 1 hour duration
+    const { date, time } = formatToInput(endDateTime);
+    setEndDate(date);
+    setEndTime(time);
+  };
+
+  const handleCategoryChange = (categoryNames: string[], newCategoryData?: {name: string, color: string}) => {
+    setCategory(categoryNames);
+    if (newCategoryData) {
+        onAddCategory(newCategoryData);
     }
   }
 
-  const handleColorChange = (categoryName: string, newColor: string) => {
-    setAllCategories(prev => prev.map(c => c.name === categoryName ? { ...c, color: newColor } : c));
-  }
+  const handleReminderChange = (value: number) => {
+    setReminders(prev => 
+      prev.includes(value)
+        ? prev.filter(r => r !== value)
+        : [...prev, value].sort((a,b) => a-b)
+    );
+  };
   
-  const getCurrentEventFromState = (): CalendarEvent => {
-    const startDateTime = new Date(`${startDate}T${startTime}`);
+  const getCurrentEventFromState = useCallback((): CalendarEvent => {
+    let startDateTime, endDateTime;
+
+    if (isAllDay) {
+        startDateTime = new Date(`${startDate}T00:00:00`);
+        endDateTime = new Date(`${startDate}T23:59:59`);
+    } else {
+        startDateTime = new Date(`${startDate}T${startTime}`);
+        endDateTime = new Date(`${endDate}T${endTime}`);
+    }
+
     return {
       ...(fullEvent as CalendarEvent),
       id: event?.id || '',
       title,
       start: startDateTime.toISOString(),
-      end: new Date(startDateTime.getTime() + 60 * 60 * 1000).toISOString(),
+      end: endDateTime.toISOString(),
+      isAllDay,
       attendees,
       summary,
       location,
       eligibility,
       source,
       category,
+      reminders,
+      recurring,
     };
-  };
+  }, [isAllDay, startDate, startTime, endDate, endTime, fullEvent, event?.id, title, attendees, summary, location, eligibility, source, category, reminders, recurring]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title || !startDate || !startTime) {
-        showToast('Please fill title, date, and time.', 'error');
+    if (!title || !startDate) {
+        showToast('Please fill title and start date.', 'error');
         return;
     }
-    onSave(getCurrentEventFromState());
+    if (!isAllDay && (!startTime || !endDate || !endTime)) {
+        showToast('Please fill out all time fields.', 'error');
+        return;
+    }
+    const currentEvent = getCurrentEventFromState();
+    if (new Date(currentEvent.end) < new Date(currentEvent.start)) {
+        showToast('End time cannot be before start time.', 'error');
+        return;
+    }
+    onSave(currentEvent);
   };
 
   const handleDelete = () => {
@@ -105,8 +169,8 @@ const EventModal: React.FC<EventModalProps> = (props) => {
   }
   
   const handleGoogleCalendarClick = async () => {
-    if (!title || !startDate || !startTime) {
-        showToast('Please set a title, date, and time before adding.', 'error');
+    if (!title || !startDate) {
+        showToast('Please set a title and date before adding.', 'error');
         return;
     }
     const currentEvent = getCurrentEventFromState();
@@ -128,25 +192,80 @@ const EventModal: React.FC<EventModalProps> = (props) => {
                 <input type="text" id="title" value={title} onChange={e => setTitle(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Category</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Category</label>
                  <CategorySelector
-                    value={category}
+                    selected={category}
                     onChange={handleCategoryChange}
-                    onColorChange={handleColorChange}
                     allCategories={allCategories}
                   />
               </div>
             </div>
             
+            <div className="flex items-center">
+                <input
+                    type="checkbox"
+                    id="all-day"
+                    checked={isAllDay}
+                    onChange={(e) => setIsAllDay(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <label htmlFor="all-day" className="ml-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    All-day event
+                </label>
+            </div>
+            
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="date" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Date</label>
-                <input type="date" id="date" value={startDate} onChange={e => setStartDate(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                <div>
+                    <label htmlFor="start-date" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Start Date</label>
+                    <input type="date" id="start-date" value={startDate} onChange={handleStartDateChange} required className="mt-1 block w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                </div>
+                {!isAllDay && (
+                    <div>
+                        <label htmlFor="start-time" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Start Time</label>
+                        <input type="time" id="start-time" value={startTime} onChange={handleStartTimeChange} required className="mt-1 block w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                    </div>
+                )}
+            </div>
+            {!isAllDay && (
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label htmlFor="end-date" className="block text-sm font-medium text-slate-700 dark:text-slate-300">End Date</label>
+                        <input type="date" id="end-date" value={endDate} min={startDate} onChange={e => setEndDate(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                    </div>
+                    <div>
+                        <label htmlFor="end-time" className="block text-sm font-medium text-slate-700 dark:text-slate-300">End Time</label>
+                        <input type="time" id="end-time" value={endTime} onChange={e => setEndTime(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                    </div>
+                </div>
+            )}
+
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Reminders</label>
+              <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
+                {REMINDER_OPTIONS.map(option => (
+                  <label key={option.value} className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={reminders.includes(option.value)}
+                      onChange={() => handleReminderChange(option.value)}
+                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-sm text-slate-600 dark:text-slate-400">{option.label}</span>
+                  </label>
+                ))}
               </div>
-              <div>
-                <label htmlFor="time" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Time</label>
-                <input type="time" id="time" value={startTime} onChange={e => setStartTime(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
-              </div>
+            </div>
+            <div>
+                <label className="flex items-center space-x-2">
+                <input
+                    type="checkbox"
+                    checked={recurring === 'annually'}
+                    onChange={(e) => setRecurring(e.target.checked ? 'annually' : undefined)}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="text-sm text-slate-600 dark:text-slate-400">Remind annually</span>
+                </label>
             </div>
             <div>
               <label htmlFor="summary" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Summary</label>
