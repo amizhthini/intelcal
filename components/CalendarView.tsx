@@ -3,7 +3,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { CalendarEvent, Category } from '../types';
 import EventModal from './EventModal';
 import CategoryManagerModal from './CategoryManagerModal';
-import { PlusIcon, ChevronLeftIcon, ChevronRightIcon, TagIcon } from './Icons';
+import { PlusIcon, ChevronLeftIcon, ChevronRightIcon, TagIcon, SearchIcon } from './Icons';
 import { getCategoryHexColor } from '../utils/color';
 
 interface CalendarViewProps {
@@ -35,6 +35,20 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [viewMode, setViewMode] = useState<CalendarDisplayMode>('month');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredEvents = useMemo(() => {
+    if (!searchQuery) {
+        return events;
+    }
+    const lowercasedQuery = searchQuery.toLowerCase();
+    return events.filter(event => 
+        event.title?.toLowerCase().includes(lowercasedQuery) ||
+        event.summary?.toLowerCase().includes(lowercasedQuery) ||
+        event.location?.toLowerCase().includes(lowercasedQuery) ||
+        event.category?.join(' ').toLowerCase().includes(lowercasedQuery)
+    );
+  }, [events, searchQuery]);
 
   // --- Modal Handlers ---
   const openModalForNew = (date: Date = new Date()) => {
@@ -133,7 +147,7 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
     }
     
     const eventsByDate = new Map<string, CalendarEvent[]>();
-    events.forEach(event => {
+    filteredEvents.forEach(event => {
         const dateKey = toLocalDateKey(new Date(event.start));
         if (!eventsByDate.has(dateKey)) {
             eventsByDate.set(dateKey, []);
@@ -184,7 +198,7 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
         </div>
         </>
     );
-  }, [currentDate, events, allCategories, openModalForNew]);
+  }, [currentDate, filteredEvents, allCategories, openModalForNew]);
 
   const renderTimeGridView = useCallback((days: Date[]) => {
     const hours = Array.from({ length: 24 }, (_, i) => i);
@@ -194,7 +208,7 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
 
     days.forEach(day => {
         const dateKey = toLocalDateKey(day);
-        const dayEvents = events
+        const dayEvents = filteredEvents
             .filter(e => toLocalDateKey(new Date(e.start)) === dateKey)
             .sort((a,b) => new Date(a.start).getTime() - new Date(b.start).getTime());
         allDayEventsByDay[dateKey] = dayEvents.filter(e => e.isAllDay);
@@ -275,7 +289,7 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
             </div>
         </div>
     );
-  }, [events, openModalForEdit, allCategories]);
+  }, [filteredEvents, openModalForEdit, allCategories]);
 
   const renderWeekView = () => {
     const startOfWeek = new Date(currentDate);
@@ -305,6 +319,18 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
             </div>
         </div>
         <div className="flex items-center gap-2">
+            <div className="relative">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-3">
+                    <SearchIcon className="w-5 h-5 text-slate-400" />
+                </span>
+                <input
+                    type="search"
+                    placeholder="Search events..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="block w-full sm:w-48 pl-10 pr-3 py-2 bg-slate-100 dark:bg-slate-700 border border-transparent rounded-md leading-5 text-slate-900 dark:text-slate-300 placeholder-slate-500 focus:outline-none focus:bg-white dark:focus:bg-slate-800 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                />
+            </div>
             <div className="p-1 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm font-semibold">
                 <button onClick={() => setViewMode('month')} className={`px-3 py-1 rounded-md transition-all ${viewMode === 'month' ? 'bg-white dark:bg-slate-800 shadow' : ''}`}>Month</button>
                 <button onClick={() => setViewMode('week')} className={`px-3 py-1 rounded-md transition-all ${viewMode === 'week' ? 'bg-white dark:bg-slate-800 shadow' : ''}`}>Week</button>

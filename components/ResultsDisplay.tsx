@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { ExtractedData, Category } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import { CalendarIcon, DownloadIcon, InformationCircleIcon, GoogleIcon } from './Icons';
@@ -26,11 +26,48 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = (props) => {
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
   const [bulkCategories, setBulkCategories] = useState<string[]>([]);
 
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const topScrollInnerRef = useRef<HTMLDivElement>(null);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
+  const isSyncingScroll = useRef(false);
+
 
   useEffect(() => {
     setEditableResults(results);
     setSelectedClientIds(new Set()); // Reset selection when results change
   }, [results]);
+
+  useLayoutEffect(() => {
+    const observer = new ResizeObserver(() => {
+        if (tableRef.current && topScrollInnerRef.current) {
+            topScrollInnerRef.current.style.width = `${tableRef.current.scrollWidth}px`;
+        }
+    });
+    if (tableRef.current) {
+        observer.observe(tableRef.current);
+    }
+    return () => observer.disconnect();
+  }, [editableResults]);
+
+  const handleScroll = (scroller: 'top' | 'bottom') => {
+    if (isSyncingScroll.current) return;
+    
+    isSyncingScroll.current = true;
+    
+    if (scroller === 'top' && topScrollRef.current && tableContainerRef.current) {
+        tableContainerRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+    } else if (scroller === 'bottom' && topScrollRef.current && tableContainerRef.current) {
+        topScrollRef.current.scrollLeft = tableContainerRef.current.scrollLeft;
+    }
+
+    // Use a timeout to reset the flag. This is crucial to prevent scroll events fired
+    // programmatically from re-triggering the sync in a loop.
+    setTimeout(() => {
+        isSyncingScroll.current = false;
+    }, 100); 
+  };
+
 
   useEffect(() => {
     const selectedItems = editableResults.filter(r => selectedClientIds.has(r.clientId!));
@@ -158,8 +195,12 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = (props) => {
 
       {selectedClientIds.size > 0 && <BulkActionBar />}
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm text-left text-slate-500 dark:text-slate-400">
+      <div ref={topScrollRef} onScroll={() => handleScroll('top')} className="overflow-x-auto overflow-y-hidden h-4">
+        <div ref={topScrollInnerRef} style={{ height: '1px' }}></div>
+      </div>
+      
+      <div ref={tableContainerRef} onScroll={() => handleScroll('bottom')} className="overflow-x-auto">
+        <table ref={tableRef} className="w-full text-sm text-left text-slate-500 dark:text-slate-400">
             <thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-300">
                 <tr>
                     <th scope="col" className="p-4">
