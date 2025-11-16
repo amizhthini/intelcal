@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { CalendarEvent, Category } from '../types';
 import { TrashIcon, GoogleIcon } from './Icons';
@@ -43,6 +44,7 @@ const EventModal: React.FC<EventModalProps> = (props) => {
   const [attendees, setAttendees] = useState<string[]>([]);
   const [reminders, setReminders] = useState<number[]>([]);
   const [recurring, setRecurring] = useState<CalendarEvent['recurring']>();
+  const [recurringEndDate, setRecurringEndDate] = useState('');
   
   const [fullEvent, setFullEvent] = useState<CalendarEvent | null>(event);
 
@@ -67,6 +69,7 @@ const EventModal: React.FC<EventModalProps> = (props) => {
       setCategory(event.category || ['General']);
       setReminders(event.reminders || []);
       setRecurring(event.recurring);
+      setRecurringEndDate(event.recurringEndDate ? event.recurringEndDate.split('T')[0] : '');
       setIsAllDay(event.isAllDay || false);
       
       const start = new Date(event.start);
@@ -141,8 +144,9 @@ const EventModal: React.FC<EventModalProps> = (props) => {
       category,
       reminders,
       recurring,
+      recurringEndDate: recurringEndDate ? new Date(recurringEndDate).toISOString() : undefined,
     };
-  }, [isAllDay, startDate, startTime, endDate, endTime, fullEvent, event?.id, title, attendees, summary, location, eligibility, source, category, reminders, recurring]);
+  }, [isAllDay, startDate, startTime, endDate, endTime, fullEvent, event?.id, title, attendees, summary, location, eligibility, source, category, reminders, recurring, recurringEndDate]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -176,6 +180,8 @@ const EventModal: React.FC<EventModalProps> = (props) => {
     const currentEvent = getCurrentEventFromState();
     await onAddToGoogleCalendar(currentEvent);
   };
+
+  const isEditing = !!event?.id;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -263,14 +269,38 @@ const EventModal: React.FC<EventModalProps> = (props) => {
                 id="recurring"
                 value={recurring || ''}
                 onChange={(e) => setRecurring((e.target.value as CalendarEvent['recurring']) || undefined)}
-                className="mt-1 block w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                disabled={isEditing}
+                className="mt-1 block w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-slate-100 dark:disabled:bg-slate-700/50"
               >
                 <option value="">Does not repeat</option>
                 <option value="weekly">Weekly</option>
                 <option value="monthly">Monthly</option>
                 <option value="annually">Annually</option>
               </select>
+              {isEditing && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      Recurrence can only be set when creating a new event.
+                  </p>
+              )}
             </div>
+            
+            {recurring && !isEditing && (
+              <div>
+                <label htmlFor="recurring-end-date" className="block text-sm font-medium text-slate-700 dark:text-slate-300">End Repeat On (Optional)</label>
+                <input
+                    type="date"
+                    id="recurring-end-date"
+                    value={recurringEndDate}
+                    onChange={e => setRecurringEndDate(e.target.value)}
+                    min={startDate}
+                    className="mt-1 block w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                />
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    If not set, repeats for 2 years by default.
+                </p>
+              </div>
+            )}
+
 
             <div>
               <label htmlFor="summary" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Summary</label>

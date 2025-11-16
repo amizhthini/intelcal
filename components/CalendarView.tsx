@@ -5,6 +5,7 @@ import EventModal from './EventModal';
 import CategoryManagerModal from './CategoryManagerModal';
 import { PlusIcon, ChevronLeftIcon, ChevronRightIcon, TagIcon, SearchIcon } from './Icons';
 import { getCategoryHexColor } from '../utils/color';
+import SearchResultsList from './SearchResultsList';
 
 interface CalendarViewProps {
   events: CalendarEvent[];
@@ -47,7 +48,7 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
         event.summary?.toLowerCase().includes(lowercasedQuery) ||
         event.location?.toLowerCase().includes(lowercasedQuery) ||
         event.category?.join(' ').toLowerCase().includes(lowercasedQuery)
-    );
+    ).sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime());
   }, [events, searchQuery]);
 
   // --- Modal Handlers ---
@@ -305,18 +306,40 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
   const renderDayView = () => {
     return renderTimeGridView([currentDate]);
   };
+  
+  const renderCalendarContent = () => {
+    if (searchQuery) {
+        return (
+            <SearchResultsList
+                events={filteredEvents}
+                onEditEvent={openModalForEdit}
+                allCategories={allCategories}
+                searchQuery={searchQuery}
+            />
+        );
+    }
+    
+    switch(viewMode) {
+        case 'month': return renderMonthView();
+        case 'week': return renderWeekView();
+        case 'day': return renderDayView();
+        default: return renderMonthView();
+    }
+  }
 
   return (
     <div className="mt-6 bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
       <div className="flex flex-wrap items-center justify-between mb-4 gap-4">
         <div className="flex items-center gap-4">
             <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
-                {getHeaderTitle()}
+                {searchQuery ? `Search Results` : getHeaderTitle()}
             </h2>
-            <div className="flex items-center gap-2">
-                <button onClick={handlePrev} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700"><ChevronLeftIcon /></button>
-                <button onClick={handleNext} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700"><ChevronRightIcon /></button>
-            </div>
+            {!searchQuery && (
+              <div className="flex items-center gap-2">
+                  <button onClick={handlePrev} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700"><ChevronLeftIcon /></button>
+                  <button onClick={handleNext} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700"><ChevronRightIcon /></button>
+              </div>
+            )}
         </div>
         <div className="flex items-center gap-2">
             <div className="relative">
@@ -331,10 +354,10 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
                     className="block w-full sm:w-48 pl-10 pr-3 py-2 bg-slate-100 dark:bg-slate-700 border border-transparent rounded-md leading-5 text-slate-900 dark:text-slate-300 placeholder-slate-500 focus:outline-none focus:bg-white dark:focus:bg-slate-800 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                 />
             </div>
-            <div className="p-1 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm font-semibold">
-                <button onClick={() => setViewMode('month')} className={`px-3 py-1 rounded-md transition-all ${viewMode === 'month' ? 'bg-white dark:bg-slate-800 shadow' : ''}`}>Month</button>
-                <button onClick={() => setViewMode('week')} className={`px-3 py-1 rounded-md transition-all ${viewMode === 'week' ? 'bg-white dark:bg-slate-800 shadow' : ''}`}>Week</button>
-                <button onClick={() => setViewMode('day')} className={`px-3 py-1 rounded-md transition-all ${viewMode === 'day' ? 'bg-white dark:bg-slate-800 shadow' : ''}`}>Day</button>
+            <div className={`p-1 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm font-semibold ${searchQuery ? 'hidden sm:block' : ''}`}>
+                <button onClick={() => setViewMode('month')} className={`px-3 py-1 rounded-md transition-all ${viewMode === 'month' ? 'bg-white dark:bg-slate-800 shadow' : ''} disabled:opacity-50 disabled:cursor-not-allowed`} disabled={!!searchQuery}>Month</button>
+                <button onClick={() => setViewMode('week')} className={`px-3 py-1 rounded-md transition-all ${viewMode === 'week' ? 'bg-white dark:bg-slate-800 shadow' : ''} disabled:opacity-50 disabled:cursor-not-allowed`} disabled={!!searchQuery}>Week</button>
+                <button onClick={() => setViewMode('day')} className={`px-3 py-1 rounded-md transition-all ${viewMode === 'day' ? 'bg-white dark:bg-slate-800 shadow' : ''} disabled:opacity-50 disabled:cursor-not-allowed`} disabled={!!searchQuery}>Day</button>
             </div>
             <button onClick={() => setIsCategoryModalOpen(true)} title="Manage Categories" className="flex items-center gap-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold py-2 px-3 rounded-lg shadow-sm hover:bg-slate-300 dark:hover:bg-slate-600 transition-all">
                 <TagIcon className="w-5 h-5" />
@@ -346,9 +369,7 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
         </div>
       </div>
       
-      {viewMode === 'month' && renderMonthView()}
-      {viewMode === 'week' && renderWeekView()}
-      {viewMode === 'day' && renderDayView()}
+      {renderCalendarContent()}
 
       {isEventModalOpen && (
         <EventModal

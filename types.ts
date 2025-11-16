@@ -1,4 +1,28 @@
 
+
+export interface Company {
+  id: string;
+  name: string;
+  createdAt: string; // ISO string
+}
+
+export interface Space {
+  id: string;
+  name:string;
+  companyId: string;
+  createdAt: string; // ISO string
+}
+
+export interface Task {
+    id: string;
+    title: string;
+    description?: string;
+    status: 'To Do' | 'In Progress' | 'Done';
+    spaceId: string;
+    dueDate?: string; // ISO String
+    assignees?: string[]; // User emails or IDs
+}
+
 export interface Category {
   name: string;
   color: string; // hex color
@@ -42,6 +66,8 @@ export interface CalendarEvent {
   googleEventId?: string; // To store the event ID from Google Calendar for syncing
   reminders?: number[]; // Array of minutes before event (e.g., 30, 120)
   recurring?: 'annually' | 'monthly' | 'weekly';
+  recurringEndDate?: string; // ISO 8601 format date
+  seriesId?: string; // To group recurring events
 }
 
 export enum View {
@@ -50,6 +76,7 @@ export enum View {
   CALENDAR = 'calendar',
   BOOKING = 'booking',
   DATA_STRUCTURING = 'data_structuring',
+  TASK_MANAGER = 'task_manager',
 }
 
 export interface ToastMessage {

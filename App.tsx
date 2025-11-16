@@ -1,6 +1,7 @@
 
+
 import React, { useState, useCallback, useEffect } from 'react';
-import { ExtractedData, CalendarEvent, View, ToastMessage, BookingSettings, Category, StoredDocument } from './types';
+import { ExtractedData, CalendarEvent, View, ToastMessage, BookingSettings, Category, StoredDocument, Company, Space, Task } from './types';
 import { extractInfo } from './services/geminiService';
 import useLocalStorage from './hooks/useLocalStorage';
 import useNotifications from './hooks/useNotifications';
@@ -16,10 +17,58 @@ import DocumentsView from './components/DocumentsView';
 import CalendarView from './components/CalendarView';
 import BookingView from './components/BookingView';
 import DataStructuringView from './components/DataStructuringView';
+import TaskManagerView from './components/TaskManagerView';
 import NavigationBar from './components/NavigationBar';
 import Toast from './components/Toast';
 import GoogleClientIdModal from './components/GoogleClientIdModal';
 import BulkAddConfirmationModal from './components/BulkAddConfirmationModal';
+
+const generateRecurrences = (base: CalendarEvent): CalendarEvent[] => {
+    const occurrences: CalendarEvent[] = [];
+    if (!base.recurring) return occurrences;
+    
+    const startDate = new Date(base.start);
+    const endDate = new Date(base.end);
+    const duration = endDate.getTime() - startDate.getTime();
+
+    let limitDate = base.recurringEndDate ? new Date(base.recurringEndDate) : new Date(startDate);
+    if (base.recurringEndDate) {
+        limitDate.setHours(23, 59, 59, 999);
+    } else {
+        limitDate.setFullYear(startDate.getFullYear() + 2);
+    }
+    
+    let currentStartDate = new Date(startDate);
+
+    const incrementDate = () => {
+        if (base.recurring === 'weekly') {
+            currentStartDate.setDate(currentStartDate.getDate() + 7);
+        } else if (base.recurring === 'monthly') {
+            const originalDay = currentStartDate.getDate();
+            currentStartDate.setMonth(currentStartDate.getMonth() + 1);
+            if (currentStartDate.getDate() !== originalDay) {
+                currentStartDate.setDate(0); // Set to last day of previous month
+            }
+        } else if (base.recurring === 'annually') {
+            currentStartDate.setFullYear(currentStartDate.getFullYear() + 1);
+        }
+    };
+    
+    incrementDate(); // Start from the next occurrence
+
+    while (currentStartDate <= limitDate) {
+        const newEndDate = new Date(currentStartDate.getTime() + duration);
+        occurrences.push({
+            ...base,
+            id: `${Date.now()}-${occurrences.length}`,
+            start: currentStartDate.toISOString(),
+            end: newEndDate.toISOString(),
+        });
+        incrementDate();
+    }
+    return occurrences;
+};
+
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true); // Default to true for development
@@ -45,6 +94,10 @@ const App: React.FC = () => {
     appointmentDuration: 30,
     bookingPageId: `user-${Math.random().toString(36).substr(2, 9)}`,
   });
+
+  const [companies, setCompanies] = useLocalStorage<Company[]>('companies', []);
+  const [spaces, setSpaces] = useLocalStorage<Space[]>('spaces', []);
+  const [tasks, setTasks] = useLocalStorage<Task[]>('tasks', []);
 
   const { notifications, markAsRead, markAllAsRead, unreadCount } = useNotifications(events);
 
@@ -151,26 +204,46 @@ const App: React.FC = () => {
   
   const handleSaveEvent = (eventData: CalendarEvent) => {
     const isNewEvent = !eventData.id;
-    const oldEvent = isNewEvent ? null : events.find(e => e.id === eventData.id);
-
-    const updatedEvent: CalendarEvent = isNewEvent 
-      ? { ...eventData, id: Date.now().toString() } 
-      : eventData;
-    
-    const existingAttendees = oldEvent?.attendees || [];
-    const newAttendees = (updatedEvent.attendees || []).filter(a => !existingAttendees.includes(a));
-
-    if (newAttendees.length > 0) {
-        if(window.confirm(`Do you want to send email invites to ${newAttendees.length} new guest(s)? This will open your default email client.`)) {
-            generateInviteEmail(updatedEvent, newAttendees);
-        }
-    }
 
     if (isNewEvent) {
-      setEvents(prev => [...prev, updatedEvent]);
-      showToast('Event created successfully!', 'success');
-    } else {
-      setEvents(prev => prev.map(e => e.id === updatedEvent.id ? updatedEvent : e));
+        const eventsToAdd: CalendarEvent[] = [];
+        const baseEventWithId = { ...eventData, id: Date.now().toString() };
+        
+        if (baseEventWithId.recurring) {
+            baseEventWithId.seriesId = baseEventWithId.id;
+            eventsToAdd.push(baseEventWithId);
+            const occurrences = generateRecurrences(baseEventWithId);
+            eventsToAdd.push(...occurrences);
+        } else {
+            eventsToAdd.push(baseEventWithId);
+        }
+        
+        const newAttendees = baseEventWithId.attendees || [];
+        if (newAttendees.length > 0) {
+            if(window.confirm(`Do you want to send email invites to ${newAttendees.length} new guest(s)? This will open your default email client.`)) {
+                generateInviteEmail(baseEventWithId, newAttendees);
+            }
+        }
+
+        setEvents(prev => [...prev, ...eventsToAdd]);
+        if (baseEventWithId.recurring) {
+            showToast(`Recurring event created with ${eventsToAdd.length} occurrences.`, 'success');
+        } else {
+            showToast('Event created successfully!', 'success');
+        }
+
+    } else { // Update existing event
+      const oldEvent = events.find(e => e.id === eventData.id);
+      const existingAttendees = oldEvent?.attendees || [];
+      const newAttendees = (eventData.attendees || []).filter(a => !existingAttendees.includes(a));
+
+      if (newAttendees.length > 0) {
+          if(window.confirm(`Do you want to send email invites to ${newAttendees.length} new guest(s)? This will open your default email client.`)) {
+              generateInviteEmail(eventData, newAttendees);
+          }
+      }
+
+      setEvents(prev => prev.map(e => e.id === eventData.id ? eventData : e));
       showToast('Event updated successfully!', 'success');
     }
   };
@@ -441,6 +514,60 @@ const App: React.FC = () => {
     showToast(`Category '${nameToDelete}' deleted. Associated events moved to 'General'.`, 'success');
   }, [setAllCategories, setEvents, showToast]);
   
+  const handleAddCompany = useCallback((name: string) => {
+    if (companies.some(c => c.name.toLowerCase() === name.trim().toLowerCase())) {
+        showToast(`Company '${name}' already exists.`, 'error');
+        return;
+    }
+    const newCompany: Company = {
+        id: `company-${Date.now()}`,
+        name: name.trim(),
+        createdAt: new Date().toISOString(),
+    };
+    setCompanies(prev => [...prev, newCompany]);
+    showToast(`Company '${name}' created!`, 'success');
+  }, [companies, setCompanies, showToast]);
+
+  const handleDeleteCompany = useCallback((companyId: string) => {
+      const companyToDelete = companies.find(c => c.id === companyId);
+      if (!companyToDelete || !window.confirm(`Are you sure you want to delete the company "${companyToDelete.name}" and all its contents?`)) {
+          return;
+      }
+
+      const spacesToDelete = spaces.filter(s => s.companyId === companyId);
+      const spaceIdsToDelete = new Set(spacesToDelete.map(s => s.id));
+
+      setCompanies(prev => prev.filter(c => c.id !== companyId));
+      setSpaces(prev => prev.filter(s => s.companyId !== companyId));
+      setTasks(prev => prev.filter(t => !spaceIdsToDelete.has(t.spaceId)));
+      showToast('Company and all its contents deleted.', 'success');
+  }, [companies, spaces, setCompanies, setSpaces, setTasks, showToast]);
+
+  const handleAddSpace = useCallback((name: string, companyId: string) => {
+    if (spaces.some(s => s.companyId === companyId && s.name.toLowerCase() === name.trim().toLowerCase())) {
+        showToast(`Space '${name}' already exists in this company.`, 'error');
+        return;
+    }
+    const newSpace: Space = {
+        id: `space-${Date.now()}`,
+        name: name.trim(),
+        companyId,
+        createdAt: new Date().toISOString(),
+    };
+    setSpaces(prev => [...prev, newSpace]);
+    showToast(`Space '${name}' created!`, 'success');
+  }, [spaces, setSpaces, showToast]);
+
+  const handleDeleteSpace = useCallback((spaceId: string) => {
+      const spaceToDelete = spaces.find(s => s.id === spaceId);
+       if (!spaceToDelete || !window.confirm(`Are you sure you want to delete the space "${spaceToDelete.name}"?`)) {
+          return;
+      }
+      setSpaces(prev => prev.filter(s => s.id !== spaceId));
+      setTasks(prev => prev.filter(t => t.spaceId !== spaceId));
+      showToast('Space and its tasks deleted.', 'success');
+  }, [spaces, setSpaces, setTasks, showToast]);
+
   const handleLoginSuccess = () => {
     setIsAuthenticated(true);
     setCurrentView(View.DASHBOARD);
@@ -519,6 +646,18 @@ const App: React.FC = () => {
         }
         {currentView === View.DATA_STRUCTURING &&
             <DataStructuringView showToast={showToast} />
+        }
+        {currentView === View.TASK_MANAGER &&
+            <TaskManagerView
+                companies={companies}
+                spaces={spaces}
+                tasks={tasks}
+                onAddCompany={handleAddCompany}
+                onDeleteCompany={handleDeleteCompany}
+                onAddSpace={handleAddSpace}
+                onDeleteSpace={handleDeleteSpace}
+                showToast={showToast}
+            />
         }
       </main>
       {isBulkAddModalOpen && (
