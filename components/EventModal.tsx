@@ -42,7 +42,7 @@ const EventModal: React.FC<EventModalProps> = (props) => {
   const [category, setCategory] = useState<string[]>(['General']);
   const [attendees, setAttendees] = useState<string[]>([]);
   const [reminders, setReminders] = useState<number[]>([]);
-  const [recurring, setRecurring] = useState<'annually' | undefined>();
+  const [recurring, setRecurring] = useState<CalendarEvent['recurring']>();
   
   const [fullEvent, setFullEvent] = useState<CalendarEvent | null>(event);
 
@@ -256,17 +256,22 @@ const EventModal: React.FC<EventModalProps> = (props) => {
                 ))}
               </div>
             </div>
+            
             <div>
-                <label className="flex items-center space-x-2">
-                <input
-                    type="checkbox"
-                    checked={recurring === 'annually'}
-                    onChange={(e) => setRecurring(e.target.checked ? 'annually' : undefined)}
-                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                />
-                <span className="text-sm text-slate-600 dark:text-slate-400">Remind annually</span>
-                </label>
+              <label htmlFor="recurring" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Repeat</label>
+              <select
+                id="recurring"
+                value={recurring || ''}
+                onChange={(e) => setRecurring((e.target.value as CalendarEvent['recurring']) || undefined)}
+                className="mt-1 block w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              >
+                <option value="">Does not repeat</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="annually">Annually</option>
+              </select>
             </div>
+
             <div>
               <label htmlFor="summary" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Summary</label>
               <textarea id="summary" value={summary} onChange={e => setSummary(e.target.value)} rows={2} className="mt-1 block w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>

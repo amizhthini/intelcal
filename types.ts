@@ -41,7 +41,7 @@ export interface CalendarEvent {
   attendees?: string[];
   googleEventId?: string; // To store the event ID from Google Calendar for syncing
   reminders?: number[]; // Array of minutes before event (e.g., 30, 120)
-  recurring?: 'annually';
+  recurring?: 'annually' | 'monthly' | 'weekly';
 }
 
 export enum View {

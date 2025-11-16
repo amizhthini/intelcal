@@ -37,6 +37,18 @@ ACTION:DISPLAY
 DESCRIPTION:Reminder
 END:VALARM`;
 
+  let rruleLine = '';
+  switch (event.recurring) {
+    case 'weekly':
+      rruleLine = 'RRULE:FREQ=WEEKLY';
+      break;
+    case 'monthly':
+      rruleLine = 'RRULE:FREQ=MONTHLY';
+      break;
+    case 'annually':
+      rruleLine = 'RRULE:FREQ=YEARLY';
+      break;
+  }
 
   const icsContent = `
 BEGIN:VCALENDAR
@@ -48,6 +60,7 @@ DTSTAMP:${toICSDate(new Date())}
 DTSTART:${toICSDate(startDate)}
 DTEND:${toICSDate(endDate)}
 SUMMARY:${event.title}
+${rruleLine ? `${rruleLine}` : ''}
 DESCRIPTION:${description}
 LOCATION:${event.location || ''}
 ${attendeesICS}${remindersICS}

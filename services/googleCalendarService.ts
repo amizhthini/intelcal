@@ -74,6 +74,19 @@ export const addEventToGoogleCalendar = async (event: CalendarEvent): Promise<an
       minutes
   }));
 
+  let recurrenceRule: string[] | undefined = undefined;
+  switch (event.recurring) {
+      case 'weekly':
+          recurrenceRule = ['RRULE:FREQ=WEEKLY'];
+          break;
+      case 'monthly':
+          recurrenceRule = ['RRULE:FREQ=MONTHLY'];
+          break;
+      case 'annually':
+          recurrenceRule = ['RRULE:FREQ=YEARLY'];
+          break;
+  }
+
   const googleEvent = {
     'summary': event.title,
     'location': event.location || '',
@@ -93,6 +106,7 @@ export const addEventToGoogleCalendar = async (event: CalendarEvent): Promise<an
         { 'method': 'popup', 'minutes': 30 }, // Default reminder if none are set
       ],
     },
+    'recurrence': recurrenceRule,
   };
 
   try {

@@ -26,31 +26,50 @@ const useNotifications = (events: CalendarEvent[]) => {
         const createReminderNotification = (
             targetDate: Date,
             reminderMinutes: number,
-            isAnnual: boolean
+            recurrenceType: CalendarEvent['recurring']
         ) => {
             const diffMinutes = (targetDate.getTime() - now.getTime()) / (1000 * 60);
             
-            const yearOfTarget = targetDate.getFullYear();
-            const reminderKey = isAnnual 
-                ? `${reminderMinutes}m-annual-${yearOfTarget}`
-                : `${reminderMinutes}m-onetime`;
+            const year = targetDate.getFullYear();
+            const month = targetDate.getMonth();
+            const day = targetDate.getDate();
+            const week = Math.ceil(day / 7);
+
+            let timeLabel = '';
+            if (reminderMinutes < 60) {
+                timeLabel = `${reminderMinutes} minutes`;
+            } else {
+                const hours = reminderMinutes / 60;
+                timeLabel = `${hours} hour${hours > 1 ? 's' : ''}`;
+            }
+
+            let reminderKey: string;
+            let message: string;
+
+            switch (recurrenceType) {
+                case 'annually':
+                    reminderKey = `${reminderMinutes}m-annual-${year}`;
+                    message = `Annual Reminder: "${event.title}" is in less than ${timeLabel} on ${targetDate.toLocaleDateString()}.`;
+                    break;
+                case 'monthly':
+                    reminderKey = `${reminderMinutes}m-monthly-${year}-${month}`;
+                    message = `Monthly Reminder: "${event.title}" is in less than ${timeLabel} on ${targetDate.toLocaleDateString()}.`;
+                    break;
+                case 'weekly':
+                    reminderKey = `${reminderMinutes}m-weekly-${year}-${month}-${week}`;
+                    message = `Weekly Reminder: "${event.title}" is in less than ${timeLabel} on ${targetDate.toLocaleDateString()}.`;
+                    break;
+                default: // one-time event
+                    reminderKey = `${reminderMinutes}m-onetime`;
+                    message = `Reminder: "${event.title}" is in less than ${timeLabel}.`;
+            }
 
             const alreadyNotified = notifiedEventIds[event.id]?.includes(reminderKey);
 
             if (diffMinutes > 0 && diffMinutes <= reminderMinutes && !alreadyNotified) {
-                let timeLabel = '';
-                if (reminderMinutes < 60) {
-                    timeLabel = `${reminderMinutes} minutes`;
-                } else {
-                    const hours = reminderMinutes / 60;
-                    timeLabel = `${hours} hour${hours > 1 ? 's' : ''}`;
-                }
-
                 addNotification({
                     eventId: event.id,
-                    message: isAnnual
-                        ? `Annual Reminder: "${event.title}" is in less than ${timeLabel} on ${targetDate.toLocaleDateString()}.`
-                        : `Reminder: "${event.title}" is in less than ${timeLabel}.`
+                    message: message
                 });
                 
                 setNotifiedEventIds(prev => ({
@@ -69,12 +88,40 @@ const useNotifications = (events: CalendarEvent[]) => {
             }
             
             event.reminders.forEach(reminderMinutes => {
-                createReminderNotification(anniversaryDate, reminderMinutes, true);
+                createReminderNotification(anniversaryDate, reminderMinutes, 'annually');
             });
+        } else if (event.recurring === 'monthly') {
+            const monthlyDate = new Date(event.start);
+            monthlyDate.setFullYear(now.getFullYear());
+            monthlyDate.setMonth(now.getMonth());
+
+            if (monthlyDate < now) {
+                monthlyDate.setMonth(now.getMonth() + 1);
+            }
+            event.reminders.forEach(reminderMinutes => {
+                createReminderNotification(monthlyDate, reminderMinutes, 'monthly');
+            });
+
+        } else if (event.recurring === 'weekly') {
+            const eventStartDate = new Date(event.start);
+            const eventDayOfWeek = eventStartDate.getDay();
+            
+            const nextOccurrence = new Date(now);
+            nextOccurrence.setDate(now.getDate() - now.getDay() + eventDayOfWeek);
+            nextOccurrence.setHours(eventStartDate.getHours(), eventStartDate.getMinutes(), eventStartDate.getSeconds(), eventStartDate.getMilliseconds());
+            
+            if (nextOccurrence < now) {
+                nextOccurrence.setDate(nextOccurrence.getDate() + 7);
+            }
+
+            event.reminders.forEach(reminderMinutes => {
+                createReminderNotification(nextOccurrence, reminderMinutes, 'weekly');
+            });
+
         } else {
             const eventDate = new Date(event.start);
             event.reminders.forEach(reminderMinutes => {
-                createReminderNotification(eventDate, reminderMinutes, false);
+                createReminderNotification(eventDate, reminderMinutes, undefined);
             });
         }
       });
