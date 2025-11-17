@@ -153,16 +153,26 @@ export const extractInfo = async (file: File | null, text: string): Promise<Extr
 
   const prompt = `
     Analyze the provided content (image, PDF, and/or text) and extract the following information.
-    The content could be from a poster, screenshot, document, or pasted text about an event, application, or deadline.
+    The content is about an event, application, or opportunity. Your primary goal is to find the main deadline.
     Format the output as a JSON object matching the provided schema.
     If a piece of information is not available, return null for that field.
+
     - Title: The main heading or title of the event/opportunity.
-    - Summary: A brief one or two-sentence summary of the description.
+    - Summary: A brief one or two-sentence summary.
     - Eligibility Criteria: Any requirements or criteria for participation.
     - Location: The physical or virtual location.
-    - Start Date & Time: The optional start date and time. If not available, return null. Extract it in YYYY-MM-DDTHH:MM:SS format if time is present, otherwise YYYY-MM-DD.
-    - End Date & Time: The end date, deadline, or event time. This is the primary date field. Extract it in YYYY-MM-DDTHH:MM:SS format if time is present, otherwise YYYY-MM-DD. If no date is available at all, return null. Today is ${new Date().toLocaleDateString('en-CA')}. If no time is mentioned, use 23:59:59.
-    - Category: Classify the item into one or more relevant categories such as "Business", "Personal", "Competition", "Grant", "Meeting", or "Deadline". Return an array of strings. If none apply, return ["General"].
+    - Start Date & Time: The optional start date. If a date is found but no time is present, default time to 00:00:00. Format as YYYY-MM-DDTHH:MM:SS.
+    
+    - End Date & Time: THIS IS THE MOST IMPORTANT FIELD. It represents the final deadline for action.
+        - Synonyms for this field include: "deadline", "submission date", "due by", "ends on", "application deadline", "closing date", "apply before".
+        - Search diligently for these keywords. The date associated with these keywords is the correct 'end' date.
+        - **CRITICAL: IGNORE** dates that refer to when the document was published or updated (e.g., "Last updated:", "Posted on:", "Date modified:"). These are NOT the deadline.
+        - If a specific time is mentioned (e.g., "5:00 PM", "23:59"), you MUST include it. Account for timezones if mentioned, but format the final output without the timezone identifier.
+        - If ONLY a date is found for the deadline without a specific time, you MUST default the time to 23:59:59.
+        - The final format must be YYYY-MM-DDTHH:MM:SS.
+        - If absolutely no deadline can be found, return null for this field. Today's date is ${new Date().toLocaleDateString('en-CA')}.
+
+    - Category: Classify into relevant categories like "Business", "Personal", "Competition", "Grant", "Meeting", "Deadline". Return an array of strings. If none fit, use ["General"].
   `;
   
   const parts: any[] = [{ text: prompt }];
@@ -185,8 +195,8 @@ export const extractInfo = async (file: File | null, text: string): Promise<Extr
           summary: { type: Type.STRING, description: 'A brief summary.' },
           eligibility: { type: Type.STRING, description: 'Eligibility criteria.' },
           location: { type: Type.STRING, description: 'The location.' },
-          start: { type: Type.STRING, description: 'The optional start date/time in YYYY-MM-DDTHH:MM:SS or YYYY-MM-DD format.' },
-          end: { type: Type.STRING, description: 'The end date/time (deadline) in YYYY-MM-DDTHH:MM:SS or YYYY-MM-DD format.' },
+          start: { type: Type.STRING, description: 'The optional start date/time in YYYY-MM-DDTHH:MM:SS format. Default time to 00:00:00 if not specified.' },
+          end: { type: Type.STRING, description: 'The critical deadline or submission date. IGNORE "last updated" or "posted on" dates. Format as YYYY-MM-DDTHH:MM:SS. If the source text provides a date but no time, you MUST use 23:59:59 as the time.' },
           category: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'An array of relevant categories for the event.' },
         },
       },

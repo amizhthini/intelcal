@@ -1,5 +1,6 @@
 
-import React, { useState, useMemo, useCallback } from 'react';
+
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { CalendarEvent, Category } from '../types';
 import EventModal from './EventModal';
 import CategoryManagerModal from './CategoryManagerModal';
@@ -18,6 +19,8 @@ interface CalendarViewProps {
   onAddCategory: (category: Category) => void;
   onUpdateCategory: (oldName: string, category: Category) => void;
   onDeleteCategory: (name: string) => void;
+  targetDate?: Date;
+  onClearTargetDate: () => void;
 }
 
 type CalendarDisplayMode = 'month' | 'week' | 'day';
@@ -30,13 +33,20 @@ const toLocalDateKey = (date: Date): string => {
 };
 
 const CalendarView: React.FC<CalendarViewProps> = (props) => {
-  const { events, setEvents, showToast, isGoogleCalendarConnected, onAddToGoogleCalendar, onSaveEvent, allCategories, onAddCategory, onUpdateCategory, onDeleteCategory } = props;
+  const { events, setEvents, showToast, isGoogleCalendarConnected, onAddToGoogleCalendar, onSaveEvent, allCategories, onAddCategory, onUpdateCategory, onDeleteCategory, targetDate, onClearTargetDate } = props;
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [viewMode, setViewMode] = useState<CalendarDisplayMode>('month');
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    if (targetDate) {
+        setCurrentDate(new Date(targetDate));
+        onClearTargetDate();
+    }
+  }, [targetDate, onClearTargetDate]);
 
   const filteredEvents = useMemo(() => {
     if (!searchQuery) {
@@ -149,11 +159,25 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
     
     const eventsByDate = new Map<string, CalendarEvent[]>();
     filteredEvents.forEach(event => {
-        const dateKey = toLocalDateKey(new Date(event.start));
-        if (!eventsByDate.has(dateKey)) {
-            eventsByDate.set(dateKey, []);
+        const startDate = new Date(event.start);
+        const endDate = new Date(event.end);
+        
+        const loopStartDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+        const loopEndDate = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+        
+        let currentDay = new Date(loopStartDate);
+        
+        while (currentDay <= loopEndDate) {
+            const dateKey = toLocalDateKey(currentDay);
+            if (!eventsByDate.has(dateKey)) {
+                eventsByDate.set(dateKey, []);
+            }
+            const dayEvents = eventsByDate.get(dateKey)!;
+            if (!dayEvents.some(e => e.id === event.id)) {
+                dayEvents.push(event);
+            }
+            currentDay.setDate(currentDay.getDate() + 1);
         }
-        eventsByDate.get(dateKey)!.push(event);
     });
 
     return (
@@ -178,7 +202,6 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
                 </time>
                 <div className="mt-1 space-y-1 overflow-y-auto max-h-full">
                     {dayEvents.slice(0, 2).map(event => (
-                    // FIX: Merged duplicate style attributes into a single style object.
                     <div 
                         key={event.id} 
                         onClick={(e) => { e.stopPropagation(); openModalForEdit(event); }} 
@@ -209,9 +232,15 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
 
     days.forEach(day => {
         const dateKey = toLocalDateKey(day);
-        const dayEvents = filteredEvents
-            .filter(e => toLocalDateKey(new Date(e.start)) === dateKey)
-            .sort((a,b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+        const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+        const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000 - 1); // End of day
+
+        const dayEvents = filteredEvents.filter(e => {
+            const eventStart = new Date(e.start);
+            const eventEnd = new Date(e.end);
+            return eventStart <= dayEnd && eventEnd >= dayStart;
+        }).sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+
         allDayEventsByDay[dateKey] = dayEvents.filter(e => e.isAllDay);
         timedEventsByDay[dateKey] = dayEvents.filter(e => !e.isAllDay);
     });
@@ -269,15 +298,29 @@ const CalendarView: React.FC<CalendarViewProps> = (props) => {
                             {dayTimedEvents.map(event => {
                                 const start = new Date(event.start);
                                 const end = new Date(event.end);
-                                const top = (start.getHours() * 60 + start.getMinutes()) / (24*60) * 100;
-                                const duration = Math.max(30, (end.getTime() - start.getTime()) / (1000 * 60)); // Min 30min height
-                                const height = duration / (24*60) * 100;
+                                const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+                                const dayEnd = new Date(dayStart.getTime() + (24 * 60 * 60 * 1000));
+            
+                                const renderStart = start < dayStart ? dayStart : start;
+                                const renderEnd = end > dayEnd ? dayEnd : end;
+                                
+                                if (renderStart >= renderEnd) return null;
+            
+                                const top = (renderStart.getHours() * 60 + renderStart.getMinutes()) / (24 * 60) * 100;
+                                const durationMinutes = (renderEnd.getTime() - renderStart.getTime()) / (1000 * 60);
+                                const height = (durationMinutes / (24 * 60)) * 100;
+
                                 return (
                                     <div
                                         key={event.id}
                                         onClick={() => openModalForEdit(event)}
                                         className="absolute left-1 right-1 bg-slate-100 dark:bg-slate-900/70 p-1 rounded text-slate-800 dark:text-slate-200 text-xs overflow-hidden cursor-pointer border-l-4"
-                                        style={{ top: `${top}%`, height: `${height}%`, borderLeftColor: getCategoryHexColor(event.category, allCategories) }}
+                                        style={{ 
+                                            top: `${top}%`, 
+                                            height: `${height}%`, 
+                                            minHeight: '20px',
+                                            borderLeftColor: getCategoryHexColor(event.category, allCategories) 
+                                        }}
                                     >
                                         <p className="font-semibold truncate">{event.title}</p>
                                         <p className="opacity-70">{start.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})} - {end.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</p>

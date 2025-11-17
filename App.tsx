@@ -88,6 +88,8 @@ const App: React.FC = () => {
 
   const [isBulkAddModalOpen, setIsBulkAddModalOpen] = useState(false);
   const [bulkAddStats, setBulkAddStats] = useState({ added: 0, skipped: 0, remaining: 0 });
+  const [lastAddedEvents, setLastAddedEvents] = useState<CalendarEvent[]>([]);
+  const [calendarTargetDate, setCalendarTargetDate] = useState<Date | undefined>(undefined);
   
   const [bookingSettings, setBookingSettings] = useLocalStorage<BookingSettings>('bookingSettings', {
     availabilityRules: [],
@@ -339,6 +341,9 @@ const App: React.FC = () => {
     
     if (addedCount > 0) {
         setEvents(prev => [...prev, ...newEvents]);
+        setLastAddedEvents(newEvents);
+    } else {
+        setLastAddedEvents([]);
     }
     
     const processedClientIds = new Set(dataItems.map(item => item.clientId!));
@@ -355,6 +360,12 @@ const App: React.FC = () => {
   }, [events, setEvents, extractionResults]);
 
   const handleNavigateAndClear = () => {
+    if (lastAddedEvents.length === 1 && lastAddedEvents[0]) {
+      setCalendarTargetDate(new Date(lastAddedEvents[0].start));
+    } else {
+      setCalendarTargetDate(new Date());
+    }
+    setLastAddedEvents([]);
     setExtractionResults([]);
     setCurrentView(View.CALENDAR);
     setIsBulkAddModalOpen(false);
@@ -633,6 +644,8 @@ const App: React.FC = () => {
                 onAddCategory={handleAddCategory}
                 onUpdateCategory={handleUpdateCategory}
                 onDeleteCategory={handleDeleteCategory}
+                targetDate={calendarTargetDate}
+                onClearTargetDate={() => setCalendarTargetDate(undefined)}
             />
         }
         {currentView === View.BOOKING &&
