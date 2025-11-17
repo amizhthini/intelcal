@@ -1,4 +1,5 @@
 
+
 import { useState, useEffect, useCallback } from 'react';
 import { CalendarEvent, Notification } from '../types';
 import useLocalStorage from './useLocalStorage';
@@ -49,19 +50,19 @@ const useNotifications = (events: CalendarEvent[]) => {
             switch (recurrenceType) {
                 case 'annually':
                     reminderKey = `${reminderMinutes}m-annual-${year}`;
-                    message = `Annual Reminder: "${event.title}" is in less than ${timeLabel} on ${targetDate.toLocaleDateString()}.`;
+                    message = `Annual Reminder: "${event.title}" is due in less than ${timeLabel} on ${targetDate.toLocaleDateString()}.`;
                     break;
                 case 'monthly':
                     reminderKey = `${reminderMinutes}m-monthly-${year}-${month}`;
-                    message = `Monthly Reminder: "${event.title}" is in less than ${timeLabel} on ${targetDate.toLocaleDateString()}.`;
+                    message = `Monthly Reminder: "${event.title}" is due in less than ${timeLabel} on ${targetDate.toLocaleDateString()}.`;
                     break;
                 case 'weekly':
                     reminderKey = `${reminderMinutes}m-weekly-${year}-${month}-${week}`;
-                    message = `Weekly Reminder: "${event.title}" is in less than ${timeLabel} on ${targetDate.toLocaleDateString()}.`;
+                    message = `Weekly Reminder: "${event.title}" is due in less than ${timeLabel} on ${targetDate.toLocaleDateString()}.`;
                     break;
                 default: // one-time event
                     reminderKey = `${reminderMinutes}m-onetime`;
-                    message = `Reminder: "${event.title}" is in less than ${timeLabel}.`;
+                    message = `Reminder: "${event.title}" is due in less than ${timeLabel}.`;
             }
 
             const alreadyNotified = notifiedEventIds[event.id]?.includes(reminderKey);
@@ -80,7 +81,7 @@ const useNotifications = (events: CalendarEvent[]) => {
         };
 
         if (event.recurring === 'annually') {
-            const anniversaryDate = new Date(event.start);
+            const anniversaryDate = new Date(event.end);
             anniversaryDate.setFullYear(now.getFullYear());
 
             if (anniversaryDate < now) {
@@ -91,7 +92,7 @@ const useNotifications = (events: CalendarEvent[]) => {
                 createReminderNotification(anniversaryDate, reminderMinutes, 'annually');
             });
         } else if (event.recurring === 'monthly') {
-            const monthlyDate = new Date(event.start);
+            const monthlyDate = new Date(event.end);
             monthlyDate.setFullYear(now.getFullYear());
             monthlyDate.setMonth(now.getMonth());
 
@@ -103,12 +104,12 @@ const useNotifications = (events: CalendarEvent[]) => {
             });
 
         } else if (event.recurring === 'weekly') {
-            const eventStartDate = new Date(event.start);
-            const eventDayOfWeek = eventStartDate.getDay();
+            const eventEndDate = new Date(event.end);
+            const eventDayOfWeek = eventEndDate.getDay();
             
             const nextOccurrence = new Date(now);
             nextOccurrence.setDate(now.getDate() - now.getDay() + eventDayOfWeek);
-            nextOccurrence.setHours(eventStartDate.getHours(), eventStartDate.getMinutes(), eventStartDate.getSeconds(), eventStartDate.getMilliseconds());
+            nextOccurrence.setHours(eventEndDate.getHours(), eventEndDate.getMinutes(), eventEndDate.getSeconds(), eventEndDate.getMilliseconds());
             
             if (nextOccurrence < now) {
                 nextOccurrence.setDate(nextOccurrence.getDate() + 7);
@@ -119,7 +120,7 @@ const useNotifications = (events: CalendarEvent[]) => {
             });
 
         } else {
-            const eventDate = new Date(event.start);
+            const eventDate = new Date(event.end);
             event.reminders.forEach(reminderMinutes => {
                 createReminderNotification(eventDate, reminderMinutes, undefined);
             });
