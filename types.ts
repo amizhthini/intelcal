@@ -70,9 +70,41 @@ export interface CalendarEvent {
   seriesId?: string; // To group recurring events
 }
 
+export interface ExtractedLead {
+  name: string | null;
+  phoneNumber: string | null;
+  email: string | null;
+  contactPerson: string | null;
+  links: string[] | null;
+  source: string | null;
+  clientId?: string;
+}
+
+export interface StoredLead {
+  id: string;
+  name: string;
+  phoneNumber: string | null;
+  email: string | null;
+  contactPerson: string | null;
+  links: string[] | null;
+  source: string;
+  createdAt: string; // ISO string
+}
+
+export interface LeadDocument {
+    id: string;
+    name: string;
+    type: string;
+    size: number;
+    content: string; // base64
+    uploadedAt: string; // ISO string
+}
+
+
 export enum View {
   DASHBOARD = 'dashboard',
   DOCUMENTS = 'documents',
+  LEADS = 'leads',
   CALENDAR = 'calendar',
   BOOKING = 'booking',
   DATA_STRUCTURING = 'data_structuring',

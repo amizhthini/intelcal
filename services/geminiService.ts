@@ -1,11 +1,12 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { ExtractedData } from '../types';
+import { ExtractedData, ExtractedLead } from '../types';
 
 declare var XLSX: any; // From the script tag in index.html
 declare var mammoth: any; // From the script tag in index.html
 
 type ExtractedDataResult = Omit<ExtractedData, 'source' | 'recurring'> & { originalSource?: string };
+type ExtractedLeadResult = Omit<ExtractedLead, 'source'> & { originalSource?: string };
 
 
 const getDeadlineFallback = (): string => {
@@ -108,6 +109,78 @@ const extractFromSheet = async (file: File): Promise<ExtractedDataResult[]> => {
         return [];
     } catch (e) {
         console.error("Failed to parse Gemini response for sheet:", response.text);
+        throw new Error("Could not parse the response from the AI model for the spreadsheet.");
+    }
+}
+
+const extractLeadsFromSheet = async (file: File): Promise<ExtractedLeadResult[]> => {
+    const data = await file.arrayBuffer();
+    const workbook = XLSX.read(data);
+    const firstSheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[firstSheetName];
+    const csvData = XLSX.utils.sheet_to_csv(worksheet);
+
+    if (!process.env.API_KEY) {
+        throw new Error("API_KEY environment variable is not set.");
+    }
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const model = "gemini-2.5-flash";
+
+    const prompt = `
+        Analyze the following CSV data from a spreadsheet. The data represents a list of contacts or leads.
+        Your task is to extract the lead information for EACH ROW and format it as an array of JSON objects.
+        
+        The CSV data is:
+        """
+        ${csvData}
+        """
+
+        For each row, identify the following fields from the columns:
+        - name: The full name of the person or the name of the business. This is the most important field.
+        - phoneNumber: The primary contact phone number.
+        - email: The primary contact email address.
+        - contactPerson: If the main name is a business, this is the name of a specific person.
+        - links: An array of all relevant URLs found (website, social media, etc.).
+        
+        IMPORTANT RULES:
+        1. The output MUST be a valid JSON array. Each element in the array is an object representing one row.
+        2. If a 'name' column is missing or a row has no value for it, try to infer it from other columns like email or company name. If not possible, you can skip the row.
+        3. If the spreadsheet is empty or contains no useful data, return an empty array [].
+    `;
+
+    const response = await ai.models.generateContent({
+        model: model,
+        contents: [{ parts: [{ text: prompt }] }],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    name: { type: Type.STRING, description: 'The name of the person or business.' },
+                    phoneNumber: { type: Type.STRING, description: 'The primary contact phone number.' },
+                    email: { type: Type.STRING, description: 'The primary contact email address.' },
+                    contactPerson: { type: Type.STRING, description: 'The name of a specific contact person, if different from the main name.' },
+                    links: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'An array of all relevant links found (e.g., website, social media).' },
+                }
+            }
+          },
+        },
+    });
+
+    try {
+        const jsonString = response.text.trim();
+        const parsedData = JSON.parse(jsonString);
+        if (Array.isArray(parsedData)) {
+            return parsedData.map(item => ({ 
+                ...item,
+                originalSource: file.name
+            }));
+        }
+        return [];
+    } catch (e) {
+        console.error("Failed to parse Gemini response for lead sheet:", response.text);
         throw new Error("Could not parse the response from the AI model for the spreadsheet.");
     }
 }
@@ -217,6 +290,76 @@ export const extractInfo = async (file: File | null, text: string): Promise<Extr
       throw new Error("Could not parse the response from the AI model.");
   }
 };
+
+export const extractLeadInfo = async (file: File | null, text: string): Promise<ExtractedLeadResult[]> => {
+  const originalSourceName = file?.name || `Pasted Text: "${text.substring(0, 20)}..."`;
+  if (file) {
+    if (file.type.includes('spreadsheet') || file.type.includes('csv') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv')) {
+        return extractLeadsFromSheet(file);
+    }
+    if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+        const docxText = await extractFromDocx(file);
+        text = `CONTEXT FROM DOCX FILE (${file.name}):\n\n${docxText}`;
+        file = null; 
+    }
+  }
+
+  if (!process.env.API_KEY) {
+    throw new Error("API_KEY environment variable is not set.");
+  }
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
+  const model = "gemini-2.5-flash";
+
+  const prompt = `
+    Analyze the provided content (image, PDF, and/or text) and extract lead information.
+    The content could be a business card, a contact page, an email signature, or a directory listing.
+    Format the output as a JSON object matching the provided schema.
+    If a piece of information is not available, return null for that field.
+
+    - name: The full name of the person or the name of the business. This is the primary identifier.
+    - phoneNumber: The primary contact phone number. Extract the full number including country or area codes if available.
+    - email: The primary contact email address.
+    - contactPerson: If the main name is a business, this is the name of a specific person to contact at that business. If not available or if the lead is a person, this can be null.
+    - links: An array of all relevant URLs found, such as the company website, LinkedIn profile, or other social media links.
+  `;
+  
+  const parts: any[] = [{ text: prompt }];
+  if (file) { 
+      parts.push(await fileToGenerativePart(file));
+  }
+  if (text) {
+      parts.push({ text: `User provided text: """${text}"""` });
+  }
+
+  const response = await ai.models.generateContent({
+    model: model,
+    contents: [{ parts }],
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          name: { type: Type.STRING, description: 'The name of the person or business.' },
+          phoneNumber: { type: Type.STRING, description: 'The primary contact phone number.' },
+          email: { type: Type.STRING, description: 'The primary contact email address.' },
+          contactPerson: { type: Type.STRING, description: 'The name of a specific contact person, if different from the main name.' },
+          links: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'An array of all relevant links found (e.g., website, social media).' },
+        },
+      },
+    },
+  });
+  
+  try {
+    const jsonString = response.text.trim();
+    const parsedData = JSON.parse(jsonString) as ExtractedLeadResult;
+    return [{ ...parsedData, originalSource: originalSourceName }];
+  } catch (e) {
+      console.error("Failed to parse Gemini response for lead:", response.text);
+      throw new Error("Could not parse the response from the AI model.");
+  }
+};
+
 
 export const structureDataFromTemplate = async (templateFile: File, dataFile: File): Promise<string> => {
   if (!process.env.API_KEY) {

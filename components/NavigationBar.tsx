@@ -1,7 +1,8 @@
 
+
 import React from 'react';
 import { View } from '../types';
-import { ChartPieIcon, DocumentTextIcon, CalendarIcon, ShareIcon, TableIcon, ClipboardListIcon } from './Icons';
+import { ChartPieIcon, DocumentTextIcon, CalendarIcon, ShareIcon, TableIcon, ClipboardListIcon, UsersIcon } from './Icons';
 
 interface NavigationBarProps {
   currentView: View;
@@ -42,6 +43,12 @@ const NavigationBar: React.FC<NavigationBarProps> = ({ currentView, setCurrentVi
           icon={<DocumentTextIcon className="w-6 h-6" />}
           isActive={currentView === View.DOCUMENTS}
           onClick={() => setCurrentView(View.DOCUMENTS)}
+        />
+        <NavItem
+          label="Leads"
+          icon={<UsersIcon className="w-6 h-6" />}
+          isActive={currentView === View.LEADS}
+          onClick={() => setCurrentView(View.LEADS)}
         />
         <NavItem
           label="Calendar"

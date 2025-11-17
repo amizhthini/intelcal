@@ -1,8 +1,8 @@
 
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { ExtractedData, CalendarEvent, View, ToastMessage, BookingSettings, Category, StoredDocument, Company, Space, Task } from './types';
-import { extractInfo } from './services/geminiService';
+import { ExtractedData, CalendarEvent, View, ToastMessage, BookingSettings, Category, StoredDocument, Company, Space, Task, ExtractedLead, StoredLead, LeadDocument } from './types';
+import { extractInfo, extractLeadInfo } from './services/geminiService';
 import useLocalStorage from './hooks/useLocalStorage';
 import useNotifications from './hooks/useNotifications';
 import { generateICS, generateInviteEmail } from './utils/calendar';
@@ -14,6 +14,7 @@ import LoginScreen from './components/LoginScreen';
 import Header from './components/Header';
 import DashboardView from './components/DashboardView';
 import DocumentsView from './components/DocumentsView';
+import LeadsView from './components/LeadsView';
 import CalendarView from './components/CalendarView';
 import BookingView from './components/BookingView';
 import DataStructuringView from './components/DataStructuringView';
@@ -22,6 +23,7 @@ import NavigationBar from './components/NavigationBar';
 import Toast from './components/Toast';
 import GoogleClientIdModal from './components/GoogleClientIdModal';
 import BulkAddConfirmationModal from './components/BulkAddConfirmationModal';
+import BulkAddLeadsConfirmationModal from './components/BulkAddLeadsConfirmationModal';
 
 const generateRecurrences = (base: CalendarEvent): CalendarEvent[] => {
     const occurrences: CalendarEvent[] = [];
@@ -85,6 +87,13 @@ const App: React.FC = () => {
   
   const [allCategories, setAllCategories] = useLocalStorage<Category[]>('allCategories', DEFAULT_CATEGORIES);
   const [storedDocuments, setStoredDocuments] = useLocalStorage<StoredDocument[]>('storedDocuments', []);
+
+  // State for Leads module
+  const [leads, setLeads] = useLocalStorage<StoredLead[]>('storedLeads', []);
+  const [leadExtractionResults, setLeadExtractionResults] = useState<ExtractedLead[]>([]);
+  const [leadDocuments, setLeadDocuments] = useLocalStorage<LeadDocument[]>('leadDocuments', []);
+  const [isBulkAddLeadsModalOpen, setIsBulkAddLeadsModalOpen] = useState(false);
+  const [bulkAddLeadsStats, setBulkAddLeadsStats] = useState({ added: 0, skipped: 0, remaining: 0 });
 
   const [isBulkAddModalOpen, setIsBulkAddModalOpen] = useState(false);
   const [bulkAddStats, setBulkAddStats] = useState({ added: 0, skipped: 0, remaining: 0 });
@@ -481,6 +490,148 @@ const App: React.FC = () => {
       }
   }
 
+  // --- Leads Module Handlers ---
+
+  const handleExtractLeads = useCallback(async (files: File[], text: string) => {
+    for (const file of files) {
+        const fileContent = await fileToBase64(file);
+        const newLeadDoc: LeadDocument = {
+            id: `${Date.now()}-${file.name}`,
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            content: fileContent,
+            uploadedAt: new Date().toISOString(),
+        };
+        setLeadDocuments(prev => {
+            if (prev.some(doc => doc.name === newLeadDoc.name && doc.size === newLeadDoc.size)) {
+                return prev;
+            }
+            return [newLeadDoc, ...prev];
+        });
+    }
+
+    const tasks: { file: File | null; text: string; sourceName: string }[] = [];
+    files.forEach(file => tasks.push({ file, text: '', sourceName: file.name }));
+    text.split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .forEach(line => tasks.push({ file: null, text: line, sourceName: `Pasted Text: "${line.substring(0, 20)}..."` }));
+
+    if (tasks.length === 0) {
+        showToast('Please provide files or text to analyze.', 'error');
+        return;
+    }
+
+    setIsLoading(true);
+    setLeadExtractionResults([]);
+
+    try {
+        const extractionPromises = tasks.map(task => extractLeadInfo(task.file, task.text));
+        const extractedInfosNested = await Promise.all(extractionPromises);
+        const extractedInfos = extractedInfosNested.flat();
+        
+        const finalResults = extractedInfos.map((info, index) => {
+            const task = tasks.find(t => (info as any).originalSource === t.sourceName) || tasks[0];
+            return {
+                ...info,
+                clientId: `${Date.now()}-${index}`,
+                source: task.sourceName,
+            };
+        });
+        setLeadExtractionResults(finalResults);
+    } catch (e) {
+      console.error(e);
+      showToast('Failed to extract lead information. Please try again.', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [showToast, setLeadDocuments]);
+
+  const extractedLeadToStoredLead = (data: ExtractedLead): StoredLead | null => {
+      if (!data.name) return null;
+      return {
+          id: `${Date.now()}-${data.name}`,
+          name: data.name,
+          phoneNumber: data.phoneNumber || null,
+          email: data.email || null,
+          contactPerson: data.contactPerson || null,
+          links: data.links || null,
+          source: data.source || 'Unknown',
+          createdAt: new Date().toISOString(),
+      };
+  };
+
+  const handleAddLeadToList = useCallback((data: ExtractedLead) => {
+    const newLead = extractedLeadToStoredLead(data);
+    if (newLead) {
+        const isDuplicate = leads.some(l => l.name === newLead.name && l.email === newLead.email);
+        if (isDuplicate) {
+            showToast("This lead already exists in your list.", 'error');
+            return;
+        }
+        setLeads(prev => [newLead, ...prev]);
+        showToast(`Lead "${newLead.name}" added to list!`, 'success');
+        setLeadExtractionResults(prev => prev.filter(r => r.clientId !== data.clientId));
+    } else {
+        showToast("Cannot add lead. A name is required.", 'error');
+    }
+  }, [leads, setLeads, showToast]);
+
+  const handleBulkAddLeadsToList = useCallback((dataItems: ExtractedLead[]) => {
+      let addedCount = 0;
+      let skippedCount = 0;
+      const newLeads: StoredLead[] = [];
+
+      dataItems.forEach(data => {
+          const potentialLead = extractedLeadToStoredLead(data);
+          if (potentialLead) {
+              const isDuplicate = leads.some(l => l.name === potentialLead.name && l.email === potentialLead.email);
+              if (isDuplicate) {
+                  skippedCount++;
+              } else {
+                  newLeads.push(potentialLead);
+                  addedCount++;
+              }
+          }
+      });
+      
+      if (addedCount > 0) {
+          setLeads(prev => [...newLeads, ...prev]);
+      }
+      
+      const processedClientIds = new Set(dataItems.map(item => item.clientId!));
+      const remainingResults = leadExtractionResults.filter(r => !processedClientIds.has(r.clientId!));
+      setLeadExtractionResults(remainingResults);
+
+      setBulkAddLeadsStats({
+          added: addedCount,
+          skipped: skippedCount,
+          remaining: remainingResults.length
+      });
+      setIsBulkAddLeadsModalOpen(true);
+  }, [leads, setLeads, leadExtractionResults]);
+  
+  const handleClearLeadResults = () => {
+    setLeadExtractionResults([]);
+    setIsBulkAddLeadsModalOpen(false);
+  };
+
+  const handleReExtractLead = useCallback((doc: LeadDocument) => {
+    const file = base64ToFile(doc.content, doc.name, doc.type);
+    handleExtractLeads([file], '');
+  }, [handleExtractLeads]);
+
+  const handleDeleteLeadDocument = useCallback((docId: string) => {
+    if (window.confirm("Are you sure you want to delete this lead document?")) {
+        setLeadDocuments(prev => prev.filter(doc => doc.id !== docId));
+        showToast("Lead document deleted.", "success");
+    }
+  }, [setLeadDocuments, showToast]);
+
+
+  // --- End of Leads Module Handlers ---
+
   const handleAddCategory = useCallback((newCategory: Category) => {
     if (allCategories.some(c => c.name.toLowerCase() === newCategory.name.toLowerCase())) {
         showToast(`Category '${newCategory.name}' already exists.`, 'error');
@@ -632,6 +783,18 @@ const App: React.FC = () => {
             onReExtract={handleReExtract}
           />
         )}
+        {currentView === View.LEADS && (
+          <LeadsView
+            onExtract={handleExtractLeads}
+            isLoading={isLoading}
+            extractionResults={leadExtractionResults}
+            onAddToList={handleAddLeadToList}
+            onBulkAddToList={handleBulkAddLeadsToList}
+            storedLeadDocuments={leadDocuments}
+            onDeleteLeadDocument={handleDeleteLeadDocument}
+            onReExtractLead={handleReExtractLead}
+          />
+        )}
         {currentView === View.CALENDAR && 
             <CalendarView 
                 events={events} 
@@ -679,6 +842,14 @@ const App: React.FC = () => {
             onClose={() => setIsBulkAddModalOpen(false)}
             onNavigate={handleNavigateAndClear}
             stats={bulkAddStats}
+        />
+      )}
+      {isBulkAddLeadsModalOpen && (
+        <BulkAddLeadsConfirmationModal
+            isOpen={isBulkAddLeadsModalOpen}
+            onClose={() => setIsBulkAddLeadsModalOpen(false)}
+            onConfirm={handleClearLeadResults}
+            stats={bulkAddLeadsStats}
         />
       )}
       <NavigationBar currentView={currentView} setCurrentView={setCurrentView} />

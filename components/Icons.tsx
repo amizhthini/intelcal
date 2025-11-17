@@ -174,6 +174,12 @@ export const SearchIcon: React.FC<{ className?: string }> = (props) => (
   </svg>
 );
 
+export const UsersIcon: React.FC<{ className?: string }> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m-7.5-2.952a4.5 4.5 0 01-9 0m9 0a4.5 4.5 0 00-9 0m9 0m0 0a9.04 9.04 0 01-4.5 1.5m4.5-1.5a9.04 9.04 0 00-4.5 1.5m0 0v.75m0-1.5a9.05 9.05 0 00-4.5 1.5m-5.25 0v.75m0-1.5a9.05 9.05 0 01-4.5 1.5m0 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm0 0a2.25 2.25 0 10-4.5 0 2.25 2.25 0 004.5 0z" />
+    </svg>
+);
+
 // File-type icons
 export const FilePdfIcon: React.FC<{ className?: string }> = (props) => (
   <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM9.5 15.5H8V9.5h1.5v6zm2.5-3.25c0 .41-.34.75-.75.75s-.75-.34-.75-.75V11c0-.55.45-1 1-1h1.5v1.5h-1.25v1.25zm5-1.75h-1.5V9.5H17v6h-1.5v-2.5h-1.5v-1.5z"/></svg>
