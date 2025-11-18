@@ -1,20 +1,26 @@
 
+
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { ExtractedLead } from '../types';
+import { ExtractedLead, Category } from '../types';
 import LoadingSpinner from './LoadingSpinner';
-import { InformationCircleIcon, LinkIcon, UsersIcon } from './Icons';
+import { InformationCircleIcon, UsersIcon } from './Icons';
+import CategorySelector from './CategorySelector';
 
 interface LeadResultsDisplayProps {
   results: ExtractedLead[];
   isLoading: boolean;
   onAddToList: (data: ExtractedLead) => void;
   onBulkAddToList: (data: ExtractedLead[]) => void;
+  allCategories: Category[];
+  onAddCategory: (category: Category) => void;
+  onUpdateCategory: (oldName: string, category: Category) => void;
 }
 
 const LeadResultsDisplay: React.FC<LeadResultsDisplayProps> = (props) => {
-  const { results, isLoading, onAddToList, onBulkAddToList } = props;
+  const { results, isLoading, onAddToList, onBulkAddToList, allCategories, onAddCategory } = props;
   const [editableResults, setEditableResults] = useState<ExtractedLead[]>([]);
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
+  const [bulkCategories, setBulkCategories] = useState<string[]>([]);
 
   const topScrollRef = useRef<HTMLDivElement>(null);
   const topScrollInnerRef = useRef<HTMLDivElement>(null);
@@ -37,6 +43,23 @@ const LeadResultsDisplay: React.FC<LeadResultsDisplayProps> = (props) => {
     return () => observer.disconnect();
   }, [editableResults]);
 
+  useEffect(() => {
+    const selectedItems = editableResults.filter(r => selectedClientIds.has(r.clientId!));
+    if (selectedItems.length > 0) {
+        const firstCategories = selectedItems[0].category || [];
+        const allSameCategories = selectedItems.every(item => 
+            JSON.stringify((item.category || []).sort()) === JSON.stringify(firstCategories.sort())
+        );
+        if (allSameCategories) {
+            setBulkCategories(firstCategories);
+        } else {
+            setBulkCategories([]);
+        }
+    } else {
+        setBulkCategories([]);
+    }
+  }, [selectedClientIds, editableResults]);
+
   const handleScroll = (scroller: 'top' | 'bottom') => {
     if (isSyncingScroll.current) return;
     isSyncingScroll.current = true;
@@ -53,6 +76,28 @@ const LeadResultsDisplay: React.FC<LeadResultsDisplayProps> = (props) => {
           currentResults.map(r => r.clientId === clientId ? { ...r, [field]: value } : r)
       );
   }
+  
+  const handleCategoryChange = (clientId: string, newCategories: string[], newCategoryData?: { name: string, color: string }) => {
+    handleFieldChange(clientId, 'category', newCategories);
+    if (newCategoryData) {
+        onAddCategory(newCategoryData);
+    }
+  };
+
+  const handleBulkCategoryChange = (newCategories: string[], newCategoryData?: { name: string, color: string }) => {
+    setBulkCategories(newCategories);
+
+    setEditableResults(currentResults =>
+        currentResults.map(r =>
+            selectedClientIds.has(r.clientId!) ? { ...r, category: newCategories } : r
+        )
+    );
+
+    if (newCategoryData) {
+        onAddCategory(newCategoryData);
+    }
+  };
+
 
   const handleSelect = (clientId: string, isSelected: boolean) => {
     setSelectedClientIds(prev => {
@@ -96,6 +141,13 @@ const LeadResultsDisplay: React.FC<LeadResultsDisplayProps> = (props) => {
   const BulkActionBar = () => (
       <div className="p-4 bg-slate-50 dark:bg-slate-900/50 border-y border-slate-200 dark:border-slate-700 flex flex-wrap items-center gap-3">
           <span className="font-semibold">{selectedClientIds.size} item(s) selected</span>
+          <div className="w-48 z-20">
+            <CategorySelector
+              selected={bulkCategories}
+              onChange={handleBulkCategoryChange}
+              allCategories={allCategories}
+            />
+          </div>
           <div className="flex-grow"></div>
           <button onClick={() => onBulkAddToList(getSelectedData())} className="flex items-center gap-2 text-sm bg-indigo-600 text-white font-semibold py-2 px-3 rounded-lg shadow-sm hover:bg-indigo-700">
               <UsersIcon className="w-4 h-4"/> Add Selected to List
@@ -124,6 +176,7 @@ const LeadResultsDisplay: React.FC<LeadResultsDisplayProps> = (props) => {
                         <input type="checkbox" checked={isAllSelected} onChange={(e) => handleSelectAll(e.target.checked)} className="w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500"/>
                     </th>
                     <th scope="col" className="px-6 py-3 min-w-[200px]">Person/Business Name</th>
+                    <th scope="col" className="px-6 py-3 min-w-[250px]">Category</th>
                     <th scope="col" className="px-6 py-3 min-w-[150px]">Phone Number</th>
                     <th scope="col" className="px-6 py-3 min-w-[200px]">Email</th>
                     <th scope="col" className="px-6 py-3 min-w-[200px]">Contact Person</th>
@@ -139,6 +192,13 @@ const LeadResultsDisplay: React.FC<LeadResultsDisplayProps> = (props) => {
                             <input type="checkbox" checked={selectedClientIds.has(result.clientId!)} onChange={e => handleSelect(result.clientId!, e.target.checked)} className="w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500"/>
                         </td>
                         <td className="px-6 py-4"><input type="text" value={result.name || ''} onChange={e => handleFieldChange(result.clientId!, 'name', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500"/></td>
+                        <td className="px-6 py-4">
+                            <CategorySelector
+                                selected={result.category || []}
+                                onChange={(cats, newCatData) => handleCategoryChange(result.clientId!, cats, newCatData)}
+                                allCategories={allCategories}
+                            />
+                        </td>
                         <td className="px-6 py-4"><input type="tel" value={result.phoneNumber || ''} onChange={e => handleFieldChange(result.clientId!, 'phoneNumber', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500"/></td>
                         <td className="px-6 py-4"><input type="email" value={result.email || ''} onChange={e => handleFieldChange(result.clientId!, 'email', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500"/></td>
                         <td className="px-6 py-4"><input type="text" value={result.contactPerson || ''} onChange={e => handleFieldChange(result.clientId!, 'contactPerson', e.target.value)} className="w-full bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500"/></td>

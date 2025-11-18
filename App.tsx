@@ -559,6 +559,7 @@ const App: React.FC = () => {
           links: data.links || null,
           source: data.source || 'Unknown',
           createdAt: new Date().toISOString(),
+          category: data.category || ['General'],
       };
   };
 
@@ -628,6 +629,13 @@ const App: React.FC = () => {
         showToast("Lead document deleted.", "success");
     }
   }, [setLeadDocuments, showToast]);
+  
+  const handleDeleteStoredLead = useCallback((leadId: string) => {
+    if (window.confirm("Are you sure you want to delete this lead?")) {
+        setLeads(prev => prev.filter(lead => lead.id !== leadId));
+        showToast("Lead deleted from your list.", "success");
+    }
+  }, [setLeads, showToast]);
 
 
   // --- End of Leads Module Handlers ---
@@ -790,9 +798,14 @@ const App: React.FC = () => {
             extractionResults={leadExtractionResults}
             onAddToList={handleAddLeadToList}
             onBulkAddToList={handleBulkAddLeadsToList}
+            storedLeads={leads}
+            onDeleteStoredLead={handleDeleteStoredLead}
             storedLeadDocuments={leadDocuments}
             onDeleteLeadDocument={handleDeleteLeadDocument}
             onReExtractLead={handleReExtractLead}
+            allCategories={allCategories}
+            onAddCategory={handleAddCategory}
+            onUpdateCategory={handleUpdateCategory}
           />
         )}
         {currentView === View.CALENDAR && 

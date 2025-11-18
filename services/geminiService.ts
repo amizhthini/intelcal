@@ -141,6 +141,7 @@ const extractLeadsFromSheet = async (file: File): Promise<ExtractedLeadResult[]>
         - email: The primary contact email address.
         - contactPerson: If the main name is a business, this is the name of a specific person.
         - links: An array of all relevant URLs found (website, social media, etc.).
+        - category: Classify the lead into relevant categories like "Prospect", "Client", "Partner", "Vendor". Return an array of strings. Default to ["Prospect"] if unsure.
         
         IMPORTANT RULES:
         1. The output MUST be a valid JSON array. Each element in the array is an object representing one row.
@@ -163,6 +164,7 @@ const extractLeadsFromSheet = async (file: File): Promise<ExtractedLeadResult[]>
                     email: { type: Type.STRING, description: 'The primary contact email address.' },
                     contactPerson: { type: Type.STRING, description: 'The name of a specific contact person, if different from the main name.' },
                     links: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'An array of all relevant links found (e.g., website, social media).' },
+                    category: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'An array of relevant categories for the lead.' },
                 }
             }
           },
@@ -322,6 +324,7 @@ export const extractLeadInfo = async (file: File | null, text: string): Promise<
     - email: The primary contact email address.
     - contactPerson: If the main name is a business, this is the name of a specific person to contact at that business. If not available or if the lead is a person, this can be null.
     - links: An array of all relevant URLs found, such as the company website, LinkedIn profile, or other social media links.
+    - category: Classify the lead into relevant categories like "Prospect", "Client", "Partner", "Vendor". Return an array of strings. Default to ["Prospect"] if unsure.
   `;
   
   const parts: any[] = [{ text: prompt }];
@@ -345,6 +348,7 @@ export const extractLeadInfo = async (file: File | null, text: string): Promise<
           email: { type: Type.STRING, description: 'The primary contact email address.' },
           contactPerson: { type: Type.STRING, description: 'The name of a specific contact person, if different from the main name.' },
           links: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'An array of all relevant links found (e.g., website, social media).' },
+          category: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'An array of relevant categories for the lead.' },
         },
       },
     },

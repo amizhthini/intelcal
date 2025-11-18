@@ -78,6 +78,7 @@ export interface ExtractedLead {
   links: string[] | null;
   source: string | null;
   clientId?: string;
+  category?: string[];
 }
 
 export interface StoredLead {
@@ -89,6 +90,7 @@ export interface StoredLead {
   links: string[] | null;
   source: string;
   createdAt: string; // ISO string
+  category?: string[];
 }
 
 export interface LeadDocument {
