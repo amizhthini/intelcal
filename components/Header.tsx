@@ -21,7 +21,7 @@ const Header: React.FC<HeaderProps> = ({ onLogout, notifications, unreadCount, o
       <div className="max-w-4xl mx-auto py-3 px-4 flex justify-between items-center">
         <div>
             <h1 className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
-            IntelliCal
+            IntelliCalll
             </h1>
             <p className="text-slate-500 dark:text-slate-400 text-sm hidden sm:block">
             Dashboard & Deadline Manager
