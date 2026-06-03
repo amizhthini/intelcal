@@ -163,10 +163,9 @@ const App: React.FC = () => {
 
     const tasks: { file: File | null; text: string; sourceName: string }[] = [];
     files.forEach(file => tasks.push({ file, text: '', sourceName: file.name }));
-    text.split('\n')
-        .map(line => line.trim())
-        .filter(line => line.length > 0)
-        .forEach(line => tasks.push({ file: null, text: line, sourceName: `Pasted Text: "${line.substring(0, 20)}..."` }));
+    if (text.trim().length > 0) {
+        tasks.push({ file: null, text: text.trim(), sourceName: 'Pasted Text' });
+    }
 
     if (tasks.length === 0) {
         showToast('Please provide files or text to analyze.', 'error');
@@ -177,16 +176,22 @@ const App: React.FC = () => {
     setExtractionResults([]);
 
     try {
-        const extractionPromises = tasks.map(task => extractInfo(task.file, task.text));
-        const extractedInfosNested = await Promise.all(extractionPromises);
-        const extractedInfos = extractedInfosNested.flat();
+        const extractedInfos: any[] = [];
+        for (let i = 0; i < tasks.length; i++) {
+            const task = tasks[i];
+            const result = await extractInfo(task.file, task.text);
+            extractedInfos.push(...result);
+            if (i < tasks.length - 1) {
+                // Wait 1 second between tasks to respect rate limits
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
         
         const finalResults = extractedInfos.map((info, index) => {
-            const task = tasks.find(t => (info as any).originalSource === t.sourceName) || tasks[0];
             return {
                 ...info,
                 clientId: `${Date.now()}-${index}`,
-                source: task.sourceName,
+                source: info.originalSource || 'Input Source',
                 attendees: [],
                 recurring: false,
             };
@@ -513,10 +518,9 @@ const App: React.FC = () => {
 
     const tasks: { file: File | null; text: string; sourceName: string }[] = [];
     files.forEach(file => tasks.push({ file, text: '', sourceName: file.name }));
-    text.split('\n')
-        .map(line => line.trim())
-        .filter(line => line.length > 0)
-        .forEach(line => tasks.push({ file: null, text: line, sourceName: `Pasted Text: "${line.substring(0, 20)}..."` }));
+    if (text.trim().length > 0) {
+        tasks.push({ file: null, text: text.trim(), sourceName: 'Pasted Text' });
+    }
 
     if (tasks.length === 0) {
         showToast('Please provide files or text to analyze.', 'error');
@@ -527,16 +531,22 @@ const App: React.FC = () => {
     setLeadExtractionResults([]);
 
     try {
-        const extractionPromises = tasks.map(task => extractLeadInfo(task.file, task.text));
-        const extractedInfosNested = await Promise.all(extractionPromises);
-        const extractedInfos = extractedInfosNested.flat();
+        const extractedInfos: any[] = [];
+        for (let i = 0; i < tasks.length; i++) {
+            const task = tasks[i];
+            const result = await extractLeadInfo(task.file, task.text);
+            extractedInfos.push(...result);
+            if (i < tasks.length - 1) {
+                // Wait 1 second between tasks to respect rate limits
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
         
         const finalResults = extractedInfos.map((info, index) => {
-            const task = tasks.find(t => (info as any).originalSource === t.sourceName) || tasks[0];
             return {
                 ...info,
                 clientId: `${Date.now()}-${index}`,
-                source: task.sourceName,
+                source: info.originalSource || 'Input Source',
             };
         });
         setLeadExtractionResults(finalResults);
